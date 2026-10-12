@@ -1,0 +1,42 @@
+baseURL = "https://baba.github.io/sandwichcake/"
+title = "sandwichcake"
+locale = "en-US"
+
+[module]
+  [[module.imports]]
+    path = "github.com/imfing/hextra"
+
+[markup]
+  [markup.goldmark]
+    [markup.goldmark.parser.attribute]
+      block = true
+      title = true
+    [markup.goldmark.renderer]
+      unsafe = true
+
+[params]
+  [params.navbar]
+    displayTitle = true
+    displayLogo = false
+
+  [params.footer]
+    displayCopyright = true
+    displayPoweredBy = true
+
+  [params.editURL]
+    enable = true
+    base = "https://github.com/baba/sandwichcake/edit/main/docs/content"
+
+  [params.search]
+    enable = true
+    type = "flexsearch"
+    # vendored so builds do not hit cdn.jsdelivr.net
+    [params.search.flexsearch]
+      js = "js/flexsearch.bundle.min.js"
+
+  [params.sidebar]
+    displayTitle = true
+
+  [params.page]
+    [params.page.theme]
+      default = "system"
