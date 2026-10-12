@@ -16,7 +16,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/authn"
 	ggcrregistry "github.com/google/go-containerregistry/pkg/registry"
 
-	"github.com/baba/sandwichcake/pkg/registry"
+	"github.com/laiaqwq/sandwichcake/pkg/registry"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/static"

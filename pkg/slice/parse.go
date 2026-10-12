@@ -1,8 +1,8 @@
 package slice
 
 import (
-	"github.com/baba/sandwichcake/pkg/layer"
-	stypes "github.com/baba/sandwichcake/pkg/types"
+	"github.com/laiaqwq/sandwichcake/pkg/layer"
+	stypes "github.com/laiaqwq/sandwichcake/pkg/types"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 )
 

@@ -1,4 +1,4 @@
-module github.com/baba/sandwichcake/docs
+module github.com/laiaqwq/sandwichcake/docs
 
 go 1.27.2
 

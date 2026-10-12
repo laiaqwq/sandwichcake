@@ -3,9 +3,9 @@
 package builtin
 
 import (
-	_ "github.com/baba/sandwichcake/pkg/types/binary"
-	_ "github.com/baba/sandwichcake/pkg/types/other"
-	_ "github.com/baba/sandwichcake/pkg/types/patch"
-	_ "github.com/baba/sandwichcake/pkg/types/venv"
-	_ "github.com/baba/sandwichcake/pkg/types/weight"
+	_ "github.com/laiaqwq/sandwichcake/pkg/types/binary"
+	_ "github.com/laiaqwq/sandwichcake/pkg/types/other"
+	_ "github.com/laiaqwq/sandwichcake/pkg/types/patch"
+	_ "github.com/laiaqwq/sandwichcake/pkg/types/venv"
+	_ "github.com/laiaqwq/sandwichcake/pkg/types/weight"
 )

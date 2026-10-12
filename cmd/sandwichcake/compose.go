@@ -9,8 +9,8 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/baba/sandwichcake/pkg/cake"
-	"github.com/baba/sandwichcake/pkg/runner"
+	"github.com/laiaqwq/sandwichcake/pkg/cake"
+	"github.com/laiaqwq/sandwichcake/pkg/runner"
 )
 
 func composeCmd() *cobra.Command {

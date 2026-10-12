@@ -11,9 +11,9 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	"github.com/baba/sandwichcake/pkg/inspect"
-	"github.com/baba/sandwichcake/pkg/layer"
-	stypes "github.com/baba/sandwichcake/pkg/types"
+	"github.com/laiaqwq/sandwichcake/pkg/inspect"
+	"github.com/laiaqwq/sandwichcake/pkg/layer"
+	stypes "github.com/laiaqwq/sandwichcake/pkg/types"
 )
 
 func inspectCmd() *cobra.Command {

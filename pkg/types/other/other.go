@@ -4,8 +4,8 @@ package other
 import (
 	"context"
 
-	"github.com/baba/sandwichcake/pkg/layer"
-	"github.com/baba/sandwichcake/pkg/types"
+	"github.com/laiaqwq/sandwichcake/pkg/layer"
+	"github.com/laiaqwq/sandwichcake/pkg/types"
 )
 
 type otherType struct{}

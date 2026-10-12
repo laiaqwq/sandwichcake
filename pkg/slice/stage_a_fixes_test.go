@@ -13,9 +13,9 @@ import (
 	ggcrregistry "github.com/google/go-containerregistry/pkg/registry"
 	gtypes "github.com/google/go-containerregistry/pkg/v1/types"
 
-	"github.com/baba/sandwichcake/internal/testutil"
-	"github.com/baba/sandwichcake/pkg/layer"
-	"github.com/baba/sandwichcake/pkg/registry"
+	"github.com/laiaqwq/sandwichcake/internal/testutil"
+	"github.com/laiaqwq/sandwichcake/pkg/layer"
+	"github.com/laiaqwq/sandwichcake/pkg/registry"
 )
 
 // server without referrers API support: falls back to the sha256-<hex> tag index.

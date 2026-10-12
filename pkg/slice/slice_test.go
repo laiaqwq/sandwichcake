@@ -13,8 +13,8 @@ import (
 	ggcrregistry "github.com/google/go-containerregistry/pkg/registry"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 
-	"github.com/baba/sandwichcake/pkg/layer"
-	"github.com/baba/sandwichcake/pkg/registry"
+	"github.com/laiaqwq/sandwichcake/pkg/layer"
+	"github.com/laiaqwq/sandwichcake/pkg/registry"
 )
 
 func testEnv(t *testing.T) (*registry.Client, string) {

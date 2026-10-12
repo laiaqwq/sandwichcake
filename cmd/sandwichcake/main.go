@@ -7,10 +7,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/baba/sandwichcake/internal/cache"
-	"github.com/baba/sandwichcake/pkg/registry"
-	_ "github.com/baba/sandwichcake/pkg/types/builtin"
-	"github.com/baba/sandwichcake/pkg/version"
+	"github.com/laiaqwq/sandwichcake/internal/cache"
+	"github.com/laiaqwq/sandwichcake/pkg/registry"
+	_ "github.com/laiaqwq/sandwichcake/pkg/types/builtin"
+	"github.com/laiaqwq/sandwichcake/pkg/version"
 )
 
 var (

@@ -1,5 +1,5 @@
 PREFIX ?= /usr/local
-MODULE := github.com/baba/sandwichcake
+MODULE := github.com/laiaqwq/sandwichcake
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X $(MODULE)/pkg/version.Version=$(VERSION)
 

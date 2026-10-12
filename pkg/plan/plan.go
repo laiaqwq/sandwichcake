@@ -10,8 +10,8 @@ import (
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 
-	"github.com/baba/sandwichcake/pkg/layer"
-	"github.com/baba/sandwichcake/pkg/registry"
+	"github.com/laiaqwq/sandwichcake/pkg/layer"
+	"github.com/laiaqwq/sandwichcake/pkg/registry"
 )
 
 // Item is one blob's transfer classification.

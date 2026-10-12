@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/baba/sandwichcake/internal/testutil"
+	"github.com/laiaqwq/sandwichcake/internal/testutil"
 )
 
 func TestScanStaticELF(t *testing.T) {
