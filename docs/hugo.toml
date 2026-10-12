@@ -1,4 +1,4 @@
-baseURL = "https://baba.github.io/sandwichcake/"
+baseURL = "https://laiaqwq.github.io/sandwichcake/"
 title = "sandwichcake"
 locale = "en-US"
 
@@ -25,7 +25,7 @@ locale = "en-US"
 
   [params.editURL]
     enable = true
-    base = "https://github.com/baba/sandwichcake/edit/main/docs/content"
+    base = "https://github.com/laiaqwq/sandwichcake/edit/main/docs/content"
 
   [params.search]
     enable = true

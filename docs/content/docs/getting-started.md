@@ -8,7 +8,7 @@ weight: 2
 Build from source (requires Go):
 
 ```sh
-git clone https://github.com/baba/sandwichcake
+git clone https://github.com/laiaqwq/sandwichcake
 cd sandwichcake
 make build          # produces bin/sandwichcake with version stamped in
 sudo make install   # installs to $(PREFIX)/bin plus a `swcake` symlink
