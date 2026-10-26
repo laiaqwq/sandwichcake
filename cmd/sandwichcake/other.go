@@ -3,13 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 
 	"github.com/laiaqwq/sandwichcake/pkg/inspect"
 	"github.com/laiaqwq/sandwichcake/pkg/layer"
@@ -54,25 +51,6 @@ func inspectCmd() *cobra.Command {
 	return cmd
 }
 
-type cliConfig struct {
-	Repos []string `yaml:"repos"`
-}
-
-func loadConfig() cliConfig {
-	var cfg cliConfig
-	dir := os.Getenv("XDG_CONFIG_HOME")
-	if dir == "" {
-		home, _ := os.UserHomeDir()
-		dir = filepath.Join(home, ".config")
-	}
-	data, err := os.ReadFile(filepath.Join(dir, "sandwichcake", "config.yaml"))
-	if err != nil {
-		return cfg
-	}
-	yaml.Unmarshal(data, &cfg)
-	return cfg
-}
-
 func lsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "ls [repo...]",
@@ -80,10 +58,14 @@ func lsCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repos := args
 			if len(repos) == 0 {
-				repos = loadConfig().Repos
+				cfg, _, err := effectiveConfig()
+				if err != nil {
+					return err
+				}
+				repos = cfg.Repos
 			}
 			if len(repos) == 0 {
-				return fmt.Errorf("no repos given and none configured in ~/.config/sandwichcake/config.yaml")
+				return fmt.Errorf("no repos given and none configured; use config set repos <repo,...>")
 			}
 			c, err := client()
 			if err != nil {

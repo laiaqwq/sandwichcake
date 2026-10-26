@@ -3,7 +3,7 @@ title: compose
 weight: 2
 ---
 
-`sandwichcake compose -f cake.yaml` resolves the base image and every
+`sandwichcake compose -f cake.yaml` (or `compose <name>` in a project) resolves the base image and every
 slice, composes them into a new image, pushes it to `target.ref`, and
 writes `cake.lock`.
 
@@ -47,7 +47,7 @@ pushed registry.example.com/ai/infer:v1
 
 | Flag | Description |
 |------|-------------|
-| `-f`, `--file` | cake.yaml path (default `./cake.yaml`); `cake.lock` is read/written alongside it |
+| `-f`, `--file` | cake.yaml path (default `./cake.yaml`); named project cakes `cake/<name>.yaml` use `cake/<name>.lock` |
 | `--dry-run` | Resolve, check, compose and compute the plan — then stop. Prints `dry-run complete`. The plan itself is rendered only with `-v` |
 | `--locked` | Use `cake.lock` only; no tag resolution. Reproduces the locked manifest digest |
 | `--verify` | Download layers and scan tar headers during resolve (overrides per-slice `verify`) |
@@ -92,3 +92,6 @@ sandwichcake compose -f cake.yaml --verify --compat docker20 --yes
   (everything classifies `reuse`).
 - `cake.lock` is meant to be committed — `compose --locked` needs no
   tag resolution and yields bit-identical output.
+- In a project, `compose serve` loads `cake/serve.yaml`. Short refs like
+  `venv:torch` and `image:serve` are expanded using `cake-config.yaml`
+  before resolution. Full refs such as `python:3.12-slim` stay unchanged.

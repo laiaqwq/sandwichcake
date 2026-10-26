@@ -36,7 +36,7 @@ Plan: 28.4MiB reuse (2 layers), 410.0MiB mount (1 layers), 4.9GiB copy (1 layers
 
 | Flag | Description |
 |------|-------------|
-| `-f`, `--file` | cake.yaml path (default `./cake.yaml`) |
+| `-f`, `--file` | cake.yaml path (default `./cake.yaml`); or pass a project cake name, e.g. `plan serve` |
 | `--verify` | Download layer tars and scan headers during resolve (libc detection, overlay validation) |
 
 ## Examples

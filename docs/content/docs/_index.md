@@ -14,4 +14,6 @@ a build daemon.
   {{< card link="types" title="Pack Types" icon="template" >}}
   {{< card link="cake-yaml" title="cake.yaml Reference" icon="document-text" >}}
   {{< card link="commands" title="CLI Reference" icon="terminal" >}}
+  {{< card link="releases" title="Releases" icon="download" >}}
+  {{< card link="testing" title="Testing" icon="check-circle" >}}
 {{< /cards >}}

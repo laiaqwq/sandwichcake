@@ -26,7 +26,7 @@ work as the source.
 Promote a slice to a release tag (same repo, instant):
 
 ```sh
-$ sandwichcake tag reg/ai/weights:qwen3-8b-rc1 :v1
+$ sandwichcake tag reg/ai/weights:qwen3-8b-rc1 reg/ai/weights:v1
 tagged reg/ai/weights:qwen3-8b-rc1 -> reg/ai/weights:v1
 ```
 

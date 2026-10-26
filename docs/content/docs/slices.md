@@ -10,11 +10,14 @@ base image.
 
 ## Anatomy
 
-- **Manifest** — a standard OCI image manifest. The config blob carries
-  sandwichcake annotations describing the slice type, container root,
-  provenance and type-specific data.
+- **Manifest** — a standard OCI image manifest. Manifest-level
+  annotations mark it a slice (`kind = slice`) and may declare the
+  platform (`any` for platform-agnostic slices).
 - **Layers** — `application/vnd.sandwichcake.*` (or standard OCI) tar
-  media types, `+gzip` / `+zstd` / uncompressed.
+  media types, `+gzip` / `+zstd` / uncompressed. Each layer *descriptor*
+  in the manifest carries the sandwichcake annotations describing that
+  layer: type, container root, name, part, file count, tool version,
+  provenance and type-specific data.
 - **Annotations** — all keys live in the
   `com.github.baba.sandwichcake.*` namespace. Type-specific keys are
   namespaced further per type.

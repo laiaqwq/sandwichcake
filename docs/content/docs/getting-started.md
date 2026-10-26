@@ -5,14 +5,23 @@ weight: 2
 
 ## Install
 
-Build from source (requires Go):
+Prebuilt binaries for macOS (Apple Silicon) and Linux (ARM64, x86_64)
+are on the
+[GitHub releases page](https://github.com/laiaqwq/sandwichcake/releases) —
+see [Releases](releases.md) for checksums and install steps.
+
+Build from source (requires Go matching `go.mod` — currently 1.27.2):
 
 ```sh
 git clone https://github.com/laiaqwq/sandwichcake
 cd sandwichcake
-make build          # produces bin/sandwichcake with version stamped in
-sudo make install   # installs to $(PREFIX)/bin plus a `swcake` symlink
+make build                              # produces bin/sandwichcake with version stamped in
+make install PREFIX="$HOME/.local"      # installs to $HOME/.local/bin plus a `swcake` symlink
 ```
+
+The rootless `make install` avoids recompiling as root; make sure
+`$HOME/.local/bin` is on your `PATH`. For a system-wide install use
+`sudo make install` (which builds and installs as root).
 
 Or without the Makefile:
 
@@ -31,9 +40,10 @@ sandwichcake pack weight ./models/qwen3-8b \
   --source hf://Qwen/Qwen3-8B@main
 ```
 
-`--root` is required: it is the absolute path the directory contents take
-inside the composed image. Everything else (compression, layer splitting,
-ownership) has a per-type default you can override.
+`--root` is required unless `pack.<type>.root` is set in the project's
+`cake-config.yaml`: it is the absolute path the directory
+contents take inside the composed image. Everything else (compression,
+layer splitting, ownership) has a per-type default you can override.
 
 ### 2. Write a cake.yaml
 
@@ -79,8 +89,31 @@ digests is written next to `cake.yaml`; replay it bit-identically with
 
 ```sh
 sandwichcake inspect registry.example.com/ai/infer:v1
-sandwichcake diff registry.example.com/ai/infer:v1 :v2
+sandwichcake diff registry.example.com/ai/infer:v1 registry.example.com/ai/infer:v2
 ```
+
+## Save defaults for repeated packs
+
+For repeated commands, use [`init`](commands/init.md) to create a project.
+Put output-affecting settings in `cake-config.yaml` and local cache
+preferences in the optional global config:
+
+```sh
+sandwichcake init demo
+cd demo
+# Edit cake-config.yaml: set registry.prefix and pack.weight.root
+sandwichcake config init --global
+sandwichcake config set cache-dir /var/tmp/sandwichcake-cache
+sandwichcake pack weight ./models/qwen3-8b --source hf://Qwen/Qwen3-8B@main
+```
+
+With `registry.prefix: registry.example.com/ai` and
+`registry.repos.weight: weights`, this targets
+`registry.example.com/ai/weights:Qwen--Qwen3-8B`.
+The project may have multiple `cake/<name>.yaml` files. Use
+`sandwichcake compose <name>` to build one; see [config](commands/config.md)
+for short refs and OCI/git project synchronization. You can still use
+standalone `cake.yaml` and explicit flags without a project.
 
 ## Registry auth
 

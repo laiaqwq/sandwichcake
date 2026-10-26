@@ -77,6 +77,9 @@ func Compose(ctx context.Context, client *registry.Client, c *cake.Cake, lock *c
 			Resolved: map[string]cake.ResolvedItem{}},
 		Config: c.Config,
 	}
+	for _, p := range platforms {
+		lockOut.Target.Platforms = append(lockOut.Target.Platforms, p.os+"/"+p.arch)
+	}
 	for _, s := range sliceRefs {
 		lockOut.Slices = append(lockOut.Slices, cake.LockRef{
 			Platform: s.Platform, Name: s.Name, Layers: s.Layers,
@@ -192,27 +195,18 @@ type platStr struct{ os, arch string }
 
 // targetPlatforms determines the platform list.
 func targetPlatforms(ctx context.Context, client *registry.Client, c *cake.Cake, lock *cake.Lock) ([]platStr, error) {
+	if lock != nil && len(lock.Target.Platforms) > 0 {
+		return parsePlatforms(lock.Target.Platforms)
+	}
 	if len(c.Target.Platforms) > 0 {
 		return parsePlatforms(c.Target.Platforms)
 	}
-	if lock != nil {
-		var ps []platStr
-		for k := range lock.Base.Resolved {
-			if k == "any" {
-				continue
-			}
-			p, err := parsePlatform(k)
-			if err != nil {
-				return nil, err
-			}
-			ps = append(ps, p)
-		}
-		if len(ps) > 0 {
-			return ps, nil
-		}
-	}
 	// Follow the base.
-	desc, err := client.Get(ctx, c.Base.Ref)
+	baseRef := c.Base.Ref
+	if lock != nil {
+		baseRef = lock.Base.Ref
+	}
+	desc, err := client.Get(ctx, baseRef)
 	if err != nil {
 		return nil, err
 	}

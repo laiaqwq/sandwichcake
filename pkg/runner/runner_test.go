@@ -207,7 +207,7 @@ func TestMultiArchIndex(t *testing.T) {
 
 	// Multi-arch base index.
 	var adds []mutate.IndexAddendum
-	for _, arch := range []string{"amd64", "arm64"} {
+	for _, arch := range []string{"arm64", "amd64"} {
 		l := testutil.DockerLayer(t, map[string]string{"bin/sh-" + arch: "x"})
 		img := empty.Image
 		img = mutate.MediaType(img, gtypes.DockerManifestSchema2)

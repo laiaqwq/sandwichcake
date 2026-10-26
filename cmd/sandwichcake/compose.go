@@ -18,9 +18,15 @@ func composeCmd() *cobra.Command {
 	var dryRun, yes, locked, verify bool
 	var compat string
 	cmd := &cobra.Command{
-		Use:   "compose -f cake.yaml",
+		Use:   "compose [name]",
 		Short: "Compose slices onto a base image",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			var err error
+			file, err = cakeFile(cmd, file, args)
+			if err != nil {
+				return err
+			}
 			c, err := cake.Load(file)
 			if err != nil {
 				return err
@@ -30,6 +36,27 @@ func composeCmd() *cobra.Command {
 				lock, err = cake.LoadLock(lockPath(file))
 				if err != nil {
 					return err
+				}
+				// A locked rerun must not reinterpret short refs against a
+				// possibly changed project prefix.
+				c.Target.Ref = lock.Target.Ref
+				c.Base.Ref = lock.Base.Ref
+			} else {
+				project, _, err := loadProject()
+				if err != nil {
+					return err
+				}
+				if err := expandCakeRefs(c, project); err != nil {
+					return err
+				}
+				if !dryRun {
+					skip, err := applyTagPolicy(cmd, project.Registry.OnTagExists, c.Target.Ref)
+					if err != nil {
+						return err
+					}
+					if skip {
+						return nil
+					}
 				}
 			}
 			cl, err := client()
@@ -61,7 +88,7 @@ func composeCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&file, "file", "f", "cake.yaml", "cake.yaml path")
+	cmd.Flags().StringVarP(&file, "file", "f", "", "cake.yaml path")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "resolve and plan only")
 	cmd.Flags().BoolVar(&yes, "yes", false, "skip copy confirmation")
 	cmd.Flags().BoolVar(&locked, "locked", false, "use cake.lock only (no tag resolution)")
@@ -74,11 +101,24 @@ func planCmd() *cobra.Command {
 	var file string
 	var verify bool
 	cmd := &cobra.Command{
-		Use:   "plan -f cake.yaml",
+		Use:   "plan [name]",
 		Short: "Show transfer plan (compose --dry-run)",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			var err error
+			file, err = cakeFile(cmd, file, args)
+			if err != nil {
+				return err
+			}
 			c, err := cake.Load(file)
 			if err != nil {
+				return err
+			}
+			project, _, err := loadProject()
+			if err != nil {
+				return err
+			}
+			if err := expandCakeRefs(c, project); err != nil {
 				return err
 			}
 			cl, err := client()
@@ -95,13 +135,62 @@ func planCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&file, "file", "f", "cake.yaml", "cake.yaml path")
+	cmd.Flags().StringVarP(&file, "file", "f", "", "cake.yaml path")
 	cmd.Flags().BoolVar(&verify, "verify", false, "verify layers during resolve")
 	return cmd
 }
 
 func lockPath(cakeFile string) string {
+	if filepath.Base(cakeFile) != "cake.yaml" {
+		return strings.TrimSuffix(cakeFile, filepath.Ext(cakeFile)) + ".lock"
+	}
 	return filepath.Join(filepath.Dir(cakeFile), "cake.lock")
+}
+
+func cakeFile(cmd *cobra.Command, flag string, args []string) (string, error) {
+	if flag != "" && len(args) > 0 {
+		return "", fmt.Errorf("use either -f or a cake name")
+	}
+	if flag != "" {
+		return flag, nil
+	}
+	if len(args) == 0 {
+		return "cake.yaml", nil
+	}
+	if strings.Contains(args[0], "/") || strings.HasSuffix(args[0], ".yaml") {
+		return args[0], nil
+	}
+	dir, err := currentProject()
+	if err != nil {
+		return "", err
+	}
+	if dir == "" {
+		return "", fmt.Errorf("no project found; use -f or sandwichcake init")
+	}
+	return filepath.Join(dir, "cake", args[0]+".yaml"), nil
+}
+
+func expandCakeRefs(c *cake.Cake, p projectConfig) error {
+	var err error
+	c.Target.Ref, err = p.Registry.expand(c.Target.Ref)
+	if err != nil {
+		return err
+	}
+	for _, ref := range append([]*cake.Ref{&c.Base}, sliceRefs(c.Slices)...) {
+		ref.Ref, err = p.Registry.expand(ref.Ref)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func sliceRefs(s []cake.Ref) []*cake.Ref {
+	refs := make([]*cake.Ref, 0, len(s))
+	for i := range s {
+		refs = append(refs, &s[i])
+	}
+	return refs
 }
 
 func confirmCopy(cmd *cobra.Command) func(int64) (bool, error) {

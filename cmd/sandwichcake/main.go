@@ -17,6 +17,7 @@ var (
 	insecureHosts []string
 	cacheDir      string
 	verbose       bool
+	projectDir    string
 )
 
 func main() {
@@ -34,6 +35,7 @@ func newRoot() *cobra.Command {
 	}
 	root.PersistentFlags().StringArrayVar(&insecureHosts, "insecure-registry", nil, "registry host to access over plain HTTP (repeatable)")
 	root.PersistentFlags().StringVar(&cacheDir, "cache-dir", "", "metadata cache dir (default ~/.cache/sandwichcake)")
+	root.PersistentFlags().StringVar(&projectDir, "project", "", "project directory (default: discover from cwd)")
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
 	root.AddCommand(
 		packCmd(),
@@ -47,16 +49,26 @@ func newRoot() *cobra.Command {
 		rmCmd(),
 		typesCmd(),
 		versionCmd(),
+		initCmd(),
+		configCmd(),
 	)
 	return root
 }
 
 func client() (*registry.Client, error) {
-	c, err := cache.New(cacheDir)
+	dir := cacheDir
+	cfg, _, err := effectiveConfig()
 	if err != nil {
 		return nil, err
 	}
-	opts := registry.Options{Cache: c}
+	if dir == "" {
+		dir = cfg.Cache.Dir
+	}
+	c, err := cache.New(dir)
+	if err != nil {
+		return nil, err
+	}
+	opts := registry.Options{Cache: c, Concurrency: cfg.Upload.Concurrency, Retries: cfg.Upload.Retries}
 	// If every repo we touch is insecure, enable insecure globally.
 	// (Per-host insecure is not supported by ggcr name parsing; the flag
 	// marks all registries insecure when set.)

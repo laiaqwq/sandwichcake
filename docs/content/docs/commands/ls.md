@@ -32,7 +32,10 @@ repos:
   - registry.example.com/ai/venv
 ```
 
-If neither arguments nor config repos exist, the command errors.
+Run `sandwichcake config init --global` to create the file, then use
+`sandwichcake config set repos registry.example.com/ai/weights,registry.example.com/ai/venv`
+or edit the YAML directly. See [`config`](config.md) for saved-default
+settings. If neither arguments nor config repos exist, the command errors.
 Use [`discover`](discover.md) first to find candidate repo names.
 
 ## Examples

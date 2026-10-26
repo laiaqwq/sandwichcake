@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -74,13 +75,55 @@ func packCmd() *cobra.Command {
 				fl.StringVar(&s, o.Name, o.Default, o.Usage)
 			}
 		}
-		cmd.MarkFlagRequired("root")
 		parent.AddCommand(cmd)
 	}
 	return parent
 }
 
 func runPack(cmd *cobra.Command, t stypes.Type, f *packFlags, args []string) error {
+	project, _, err := loadProject()
+	if err != nil {
+		return err
+	}
+	defaults := project.Pack.forType(t.Name())
+	if !cmd.Flags().Changed("root") {
+		f.root = defaults.Root
+		if f.root == "" && t.Name() == "weight" {
+			f.root, err = modelRoot(project.Models.Paths, *f.typeVals["source"])
+			if err != nil {
+				return err
+			}
+		}
+	}
+	if f.root == "" {
+		return fmt.Errorf("--root required (or set pack.%s.root in cake-config.yaml)", t.Name())
+	}
+	if !cmd.Flags().Changed("to-prefix") {
+		f.toPrefix = project.Registry.Prefix
+	}
+	if !cmd.Flags().Changed("compression") {
+		f.compression = defaults.Compression
+	}
+	if !cmd.Flags().Changed("level") && defaults.Level != nil {
+		f.level = *defaults.Level
+	}
+	if !cmd.Flags().Changed("owner") {
+		f.owner = defaults.Owner
+	}
+	if !cmd.Flags().Changed("chmod") {
+		f.chmod = defaults.Chmod
+	}
+	if defaults.Split != nil {
+		if !cmd.Flags().Changed("no-split") && defaults.Split.Enabled != nil {
+			f.noSplit = !*defaults.Split.Enabled
+		}
+		if !cmd.Flags().Changed("large-threshold") {
+			f.large = defaults.Split.Large
+		}
+		if !cmd.Flags().Changed("small-threshold") {
+			f.small = defaults.Split.Small
+		}
+	}
 	ctx := cmd.Context()
 	var dir string
 	var extraRewrites []stypes.Rewrite
@@ -138,6 +181,25 @@ func runPack(cmd *cobra.Command, t stypes.Type, f *packFlags, args []string) err
 			typeOpts[name] = "true"
 		}
 	}
+	if f.to == "" && f.toPrefix != "" {
+		if project.Kind != "" && !cmd.Flags().Changed("to-prefix") {
+			f.to, err = projectPackTarget(t.Name(), dir, f.fromLock, project.Registry, typeOpts)
+		} else {
+			f.to, err = defaultPackTarget(t, dir, f.fromLock, f.toPrefix, "", typeOpts)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	if project.Kind != "" && !f.dryRun && f.to != "" && !f.merge {
+		skip, err := applyTagPolicy(cmd, project.Registry.OnTagExists, f.to)
+		if err != nil {
+			return err
+		}
+		if skip {
+			return nil
+		}
+	}
 	c, err := client()
 	if err != nil {
 		return err
@@ -165,6 +227,44 @@ func runPack(cmd *cobra.Command, t stypes.Type, f *packFlags, args []string) err
 		}
 	}
 	return nil
+}
+
+func defaultPackTarget(t stypes.Type, dir, lock, prefix, tagFormat string, typeOpts map[string]string) (string, error) {
+	name := filepath.Base(filepath.Clean(dir))
+	if lock != "" {
+		name = strings.TrimSuffix(filepath.Base(lock), filepath.Ext(lock))
+	}
+	rev := "latest"
+	repo := strings.TrimSuffix(prefix, "/") + "/" + t.Name()
+	if source, ok := strings.CutPrefix(typeOpts["source"], "hf://"); ok && t.Name() == "weight" {
+		id, sourceRev, _ := strings.Cut(source, "@")
+		if id == "" {
+			return "", fmt.Errorf("weight: malformed hf source %q", typeOpts["source"])
+		}
+		name = filepath.Base(id)
+		if sourceRev != "" {
+			rev = sourceRev
+		}
+	}
+	if n, ok := t.(stypes.Namer); ok && (t.Name() != "weight" || strings.HasPrefix(typeOpts["source"], "hf://")) {
+		target, err := n.DefaultTarget(&stypes.Source{Opts: stypes.Opts{Values: typeOpts}}, prefix)
+		if err != nil {
+			return "", err
+		}
+		if tagFormat == "" {
+			return target, nil
+		}
+		i := strings.LastIndex(target, ":")
+		if i < strings.LastIndex(target, "/") {
+			return "", fmt.Errorf("cannot apply tag-format to target %q", target)
+		}
+		repo = target[:i]
+	}
+	if tagFormat == "" {
+		tagFormat = "{name}"
+	}
+	tag := strings.NewReplacer("{name}", name, "{type}", t.Name(), "{rev}", rev).Replace(tagFormat)
+	return repo + ":" + tag, nil
 }
 
 func parseSizeOr(s string, def int64) (int64, error) {

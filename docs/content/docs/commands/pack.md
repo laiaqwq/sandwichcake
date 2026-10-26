@@ -42,17 +42,20 @@ and discarded.
 sandwichcake pack <type> <dir> --root <path> [flags]
 ```
 
-`--root` is required — the absolute path the directory contents occupy
-inside a composed image. One of `--to` or `--to-prefix` must resolve a
-target (Namer types like `weight` can derive it from `--source`).
+`--root` is required unless `pack.<type>.root` or a model path template
+is set in the project's `cake-config.yaml`. `--to` sets a full target;
+`--to-prefix` explicitly enables legacy prefix auto-naming. When a
+project config sets `registry.prefix`, `registry.repos`, and optional
+`registry.repoFormat`/`registry.tagFormat`, they determine automatic
+targets. Explicit flags take precedence. See [`config`](config.md).
 
 ## Flags
 
 | Flag | Description |
 |------|-------------|
-| `--root` | **Required.** Container root path (e.g. `/opt/venv`) |
-| `--to` | Target `repo:tag` |
-| `--to-prefix` | `registry/repo` prefix for auto-naming (Namer types) |
+| `--root` | Container root path (e.g. `/opt/venv`); required unless a project root or model path is configured |
+| `--to` | Target `repo:tag`; overrides saved auto-naming |
+| `--to-prefix` | `registry/repo` prefix for auto-naming (overrides project `registry.prefix`) |
 | `--compression` | `gzip` \| `zstd` \| `none` (per-type default) |
 | `--level` | Compression level |
 | `--no-split` | Disable automatic layer splitting |

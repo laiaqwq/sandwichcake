@@ -20,8 +20,9 @@ type Lock struct {
 
 // LockTarget pins the final output digest.
 type LockTarget struct {
-	Ref    string `yaml:"ref"`
-	Digest string `yaml:"digest"` // final index/manifest digest
+	Ref       string   `yaml:"ref"`
+	Digest    string   `yaml:"digest"` // final index/manifest digest
+	Platforms []string `yaml:"platforms,omitempty"`
 }
 
 // LockRef is a Ref with digest resolution results.

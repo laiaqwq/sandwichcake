@@ -7,12 +7,13 @@ weight: 11
 
 ```text
 $ sandwichcake version
-v0.3.0
+v0.0.1
 ```
 
 The version is stamped at build time via `-ldflags` — `make build` and
 release builds set it; a plain `go build` / `go install` without the
-project's ldflags prints the built-in default.
+project's ldflags prints the built-in default `dev`. Versioned binaries
+are on the [releases page](../releases.md).
 
 ## Notes
 

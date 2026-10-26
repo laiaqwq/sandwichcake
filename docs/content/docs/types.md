@@ -33,10 +33,14 @@ Packs a Python virtualenv.
 At pack time the venv is scanned for ELF binaries; the maximum
 `glibc>=X.Y` requirement (or musl) is recorded in the slice annotations
 and checked against the base image at compose time (see
-[libc resolution](../cake-yaml.md#libc)).
+[libc resolution](cake-yaml.md#libc)).
 
-`--from-lock` resolves and installs the environment locally with `uv`,
-then packs the result — no manual venv needed:
+`--from-lock` resolves and installs the environment locally with `uv`
+(you need `uv` on `PATH` and network access to the package index), then
+packs the result — no manual venv needed. The venv is built for the
+**host** platform: on macOS the binaries are Mach-O, which the ELF
+scanner ignores, so libc requirements are not recorded and the result
+will not run on Linux. Build venv slices for Linux on a Linux host:
 
 ```sh
 sandwichcake pack venv --root /opt/venv \
@@ -65,7 +69,7 @@ scanner extracts architecture, interpreter and the maximum `glibc>=X.Y`
 requirement at pack time; mixed architectures in one directory are
 rejected. `compose` reports an error when a `glibc` requirement meets a
 musl base, and a warning when the base libc cannot be verified (see
-[libc resolution](../cake-yaml.md#libc)).
+[libc resolution](cake-yaml.md#libc)).
 
 ## patch
 
