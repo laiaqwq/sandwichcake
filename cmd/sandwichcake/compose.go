@@ -37,6 +37,15 @@ func composeCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
+				if registryPrefix != "" {
+					project, _, err := loadProject()
+					if err != nil {
+						return err
+					}
+					if err := checkLockPrefix(c, lock, project); err != nil {
+						return err
+					}
+				}
 				// A locked rerun must not reinterpret short refs against a
 				// possibly changed project prefix.
 				c.Target.Ref = lock.Target.Ref
@@ -180,6 +189,38 @@ func expandCakeRefs(c *cake.Cake, p projectConfig) error {
 		ref.Ref, err = p.Registry.expand(ref.Ref)
 		if err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// checkLockPrefix rejects `--locked --registry-prefix` when the override
+// would expand cake.yaml refs differently from what the lock pinned.
+func checkLockPrefix(c *cake.Cake, lock *cake.Lock, p projectConfig) error {
+	mismatch := func(ref, pinned string) error {
+		if pinned == "" {
+			return nil
+		}
+		got, err := p.Registry.expand(ref)
+		if err != nil {
+			return err
+		}
+		if got != pinned {
+			return fmt.Errorf("--registry-prefix expands %q to %s but the lock pinned %s; rerun without --locked to re-lock", ref, got, pinned)
+		}
+		return nil
+	}
+	if err := mismatch(c.Target.Ref, lock.Target.Ref); err != nil {
+		return err
+	}
+	if err := mismatch(c.Base.Ref, lock.Base.Input); err != nil {
+		return err
+	}
+	for i := range c.Slices {
+		if i < len(lock.Slices) {
+			if err := mismatch(c.Slices[i].Ref, lock.Slices[i].Input); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

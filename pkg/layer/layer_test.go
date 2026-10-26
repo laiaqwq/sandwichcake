@@ -128,6 +128,60 @@ func TestTarDeterministic(t *testing.T) {
 	}
 }
 
+func TestTarLayoutMatchesWriteTar(t *testing.T) {
+	dir := t.TempDir()
+	long := "deep/" + string(bytes.Repeat([]byte("n"), 150)) + ".bin"
+	writeFile(t, dir, "a.txt", "hello", 0o644)
+	writeFile(t, dir, "block.bin", string(bytes.Repeat([]byte("b"), 1024)), 0o644)
+	writeFile(t, dir, long, "long-name-content", 0o644)
+	writeFile(t, dir, "empty", "", 0o644)
+	if err := os.Symlink("a.txt", filepath.Join(dir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := Group{Entries: entries}
+	for _, opts := range []TarOptions{
+		{Root: "/models/org/name", MTime: time.Unix(0, 0)},
+		{Root: "/", MTime: time.Unix(1700000000, 0), UID: 1000, GID: 1000, NoParents: true},
+	} {
+		var want bytes.Buffer
+		if err := WriteTar(&want, g, opts); err != nil {
+			t.Fatal(err)
+		}
+		l, err := TarLayout(g, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got bytes.Buffer
+		for _, p := range l.Pieces {
+			if p.Offset != int64(got.Len()) {
+				t.Fatalf("piece offset %d, have %d", p.Offset, got.Len())
+			}
+			if p.Entry < 0 {
+				got.Write(p.Data)
+				continue
+			}
+			data, err := os.ReadFile(g.Entries[p.Entry].Abs)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got.Write(data)
+		}
+		if l.Size != int64(want.Len()) || !bytes.Equal(got.Bytes(), want.Bytes()) {
+			t.Fatalf("layout differs from WriteTar: %d vs %d bytes", l.Size, want.Len())
+		}
+		if i := l.PieceAt(0); i != 0 {
+			t.Fatalf("PieceAt(0) = %d", i)
+		}
+		if i := l.PieceAt(l.Size); i != len(l.Pieces) {
+			t.Fatalf("PieceAt(EOF) = %d", i)
+		}
+	}
+}
+
 func TestTarNoParents(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "a.txt", "hi", 0o644)

@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -26,6 +27,7 @@ func (weightType) Schema() int  { return 1 }
 func (weightType) Options() []types.Option {
 	return []types.Option{
 		{Name: "source", Usage: "provenance, e.g. hf://org/name@rev, https://, s3://"},
+		{Name: "source-commit", Usage: "resolved upstream commit of --source (set automatically for remote sources)"},
 	}
 }
 
@@ -72,6 +74,10 @@ func filesManifest(src *types.Source) ([]byte, error) {
 		if !e.IsRegular() {
 			continue
 		}
+		if e.SHA256 != "" {
+			files = append(files, fileEntry{Path: e.Rel, Size: e.Size, SHA256: e.SHA256})
+			continue
+		}
 		h := sha256.New()
 		f, err := os.Open(e.Abs)
 		if err != nil {
@@ -98,6 +104,9 @@ func (weightType) Annotate(src *types.Source) map[string]string {
 	a := map[string]string{}
 	if s := src.Opts.Get("source", ""); s != "" {
 		a[key("source")] = s
+	}
+	if s := src.Opts.Get("source-commit", ""); s != "" {
+		a[key("source.commit")] = s
 	}
 	// Dominant weight format by count.
 	counts := map[string]int{}
@@ -134,7 +143,7 @@ func (weightType) Metadata(src *types.Source) []types.MetadataFile {
 	}
 	for _, name := range []string{"config.json", "model_index.json"} {
 		for _, e := range src.Entries {
-			if e.Rel == name && e.IsRegular() {
+			if e.Rel == name && e.IsRegular() && e.Abs != "" {
 				if data, err := os.ReadFile(e.Abs); err == nil {
 					out = append(out, types.MetadataFile{
 						Name:      name,
@@ -167,7 +176,9 @@ func (weightType) DefaultTarget(src *types.Source, prefix string) (string, error
 	if rev == "" {
 		rev = "latest"
 	}
-	repo := strings.ReplaceAll(id, "/", "--")
+	rev = strings.TrimLeft(regexp.MustCompile(`[^A-Za-z0-9_.-]`).ReplaceAllString(rev, "-"), ".-")
+	// OCI repository names are lowercase-only.
+	repo := strings.ToLower(strings.ReplaceAll(id, "/", "--"))
 	if prefix == "" {
 		return "", fmt.Errorf("weight: target prefix required")
 	}

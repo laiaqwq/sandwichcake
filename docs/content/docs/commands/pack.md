@@ -6,6 +6,8 @@ weight: 1
 `sandwichcake pack <type> <dir>` packs a local directory into a
 **slice** and pushes it to a registry. Types: `venv`, `weight`,
 `binary`, `patch`, `other` — see [Pack Types](../types.md).
+`pack weight` can also stream a model from Hugging Face, ModelScope or a
+URL straight into the registry — see [Remote models](#remote-models).
 
 ## What happens
 
@@ -73,6 +75,72 @@ targets. Explicit flags take precedence. See [`config`](config.md).
 Type-specific flags (e.g. `venv --python/--lock/--from-lock`,
 `weight --source`, `patch --base`) are listed by
 [`sandwichcake types`](types.md) and on the [types](../types.md) page.
+
+## Remote models {#remote-models}
+
+```sh
+sandwichcake pack weight <source> [--include glob]... [--exclude glob]... [--keep-dir dir] [flags]
+```
+
+`<source>` may be any of:
+
+| Source | Meaning |
+|--------|---------|
+| `hf://org/name[@rev]` | Whole Hugging Face model (default rev `main`) |
+| `https://huggingface.co/org/name[/tree/<rev>[/<dir>]]` | Same; `/tree/<rev>/<dir>` keeps only that subdirectory (paths stay repo-relative) |
+| `https://huggingface.co/org/name/blob/<rev>/<file>` (or `/resolve/`) | One file |
+| `modelscope://org/name[@rev]`, `https://modelscope.cn/models/org/name[/files][?Revision=<rev>]` | ModelScope model (default rev `master`) |
+| any other `https://…/file[#sha256=<hex>]` | One file; the optional fragment is verified |
+
+URLs on the configured mirror host (`download.hf.endpoint`, e.g.
+`https://hf-mirror.com`) are recognized as Hugging Face URLs. Only models
+are supported (not datasets or spaces).
+
+Files are downloaded and uploaded **at the same time**: the deterministic
+tar of each layer is computed from the file list up front, every file is
+verified against the upstream sha256 (LFS) or git blob id while it
+streams, and the layer is sent with chunked OCI uploads whose digest is
+computed on the fly. Nothing is staged on disk except small non-LFS files
+(configs, tokenizers), which are fetched first. Memory use is bounded by
+`download.concurrency` × (`download.connections` × `download.segmentSize`
++ one upload chunk).
+
+- **Naming and provenance** — the slice is named like a local pack with
+  `--source hf://org/name@<rev>`: the rev you wrote goes into `{rev}` (and
+  the tag), the resolved commit is recorded in the
+  `…weight.source.commit` annotation. Repository path components are
+  lowercased (OCI requires it); tags keep their case. `models.paths`
+  supplies the default `--root`.
+- **Filtering** — `--include` / `--exclude` take gitignore-style globs on
+  repo paths; they replace `pack.weight.include` / `pack.weight.exclude`
+  from `cake-config.yaml`. Without includes, every file is packed.
+- **Resume** — an interrupted run continues where it stopped when rerun:
+  downloads resume with HTTP range requests, and uncompressed layers
+  (the weight default) resume their upload at the last acknowledged chunk
+  in a new process, using hash state saved in the metadata cache.
+  Compressed layers restart from zero. Layers that already exist in the
+  registry are skipped without downloading.
+- **Verification failures** cancel the upload session; nothing is
+  committed.
+- **`--keep-dir <dir>`** also writes the verified files to `<dir>`.
+  Packing that directory locally (named like the model, with the same
+  `--source` and `--source-commit`) reproduces the same digests.
+- **`--dry-run`** lists the files and prints the layer plan without
+  downloading content.
+
+Example:
+
+```sh
+$ export HF_TOKEN=hf_…            # gated/private models only
+$ sandwichcake pack weight https://huggingface.co/Qwen/Qwen3-8B/tree/main \
+    --exclude 'original/**' --to registry.example.com/ai/weights/qwen--qwen3-8b:main
+layer 1/6: streaming model-00001-of-00005.safetensors (3995 MB uncompressed)
+…
+pushed registry.example.com/ai/weights/qwen--qwen3-8b:main
+```
+
+Tokens and endpoints: see [Authentication](_index.md#authentication) and
+[`config`](config.md#local-settings-and-precedence).
 
 ## Examples
 

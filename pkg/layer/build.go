@@ -107,30 +107,15 @@ func Build(g Group, topts TarOptions, comp Compression, level int, tmpDir string
 		l.Close()
 		return nil, err
 	}
-	var cw io.WriteCloser
-	switch comp {
-	case CompressionGzip:
-		if level == 0 {
-			level = pgzip.DefaultCompression
-		}
-		cw, err = pgzip.NewWriterLevel(io.MultiWriter(bf, bh), level)
-	case CompressionZstd:
-		lvl := zstd.SpeedDefault
-		if level != 0 {
-			lvl = zstd.EncoderLevelFromZstd(level)
-		}
-		var zerr error
-		cw, zerr = zstd.NewWriter(io.MultiWriter(bf, bh), zstd.WithEncoderLevel(lvl))
-		err = zerr
-	default:
-		err = fmt.Errorf("layer: unknown compression %q", comp)
-	}
+	cw, err := NewCompressor(io.MultiWriter(bf, bh), comp, level)
 	if err == nil {
 		_, err = io.Copy(cw, src)
 	}
 	src.Close()
-	if cerr := cw.Close(); err == nil {
-		err = cerr
+	if cw != nil {
+		if cerr := cw.Close(); err == nil {
+			err = cerr
+		}
 	}
 	if cerr := bf.Close(); err == nil {
 		err = cerr
@@ -147,6 +132,33 @@ func Build(g Group, topts TarOptions, comp Compression, level int, tmpDir string
 	}
 	l.size = fi.Size()
 	return l, nil
+}
+
+// NewCompressor returns the deterministic gzip/zstd writer used for layer
+// blobs (level 0 = default).
+func NewCompressor(w io.Writer, comp Compression, level int) (io.WriteCloser, error) {
+	switch comp {
+	case CompressionGzip:
+		if level == 0 {
+			level = pgzip.DefaultCompression
+		}
+		zw, err := pgzip.NewWriterLevel(w, level)
+		if err != nil {
+			return nil, err
+		}
+		return zw, nil
+	case CompressionZstd:
+		lvl := zstd.SpeedDefault
+		if level != 0 {
+			lvl = zstd.EncoderLevelFromZstd(level)
+		}
+		zw, err := zstd.NewWriter(w, zstd.WithEncoderLevel(lvl))
+		if err != nil {
+			return nil, err
+		}
+		return zw, nil
+	}
+	return nil, fmt.Errorf("layer: unknown compression %q", comp)
 }
 
 // Digest implements v1.Layer.

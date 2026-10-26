@@ -27,6 +27,12 @@ sandwichcake config push [destination] [--new-branch branch]
 | `upload-concurrency` | `upload.concurrency` | Concurrent registry uploads |
 | `upload-retries` | `upload.retries` | Transient upload retries |
 | `repos` | `repos` | Default repository list for `ls` without arguments |
+| `download-concurrency` | `download.concurrency` | Remote model layers streamed in parallel (default 2) |
+| `download-connections` | `download.connections` | Parallel ranged requests per file (default 4) |
+| `download-segment-size` | `download.segmentSize` | Bytes per ranged request (default `32Mi`) |
+| `download-retries` | `download.retries` | Download retries per request (default 5) |
+| `hf-endpoint` | `download.hf.endpoint` | Hugging Face endpoint or mirror (default `https://huggingface.co`) |
+| `modelscope-endpoint` | `download.modelscope.endpoint` | ModelScope endpoint (default `https://www.modelscope.cn`) |
 
 `config set repos` takes comma-separated repository names; the YAML field
 is a list. `config unset` clears a value. Project output settings
@@ -54,6 +60,11 @@ cache:
 upload:
   concurrency: 4
   retries: 5
+download:
+  concurrency: 2
+  connections: 4
+  segmentSize: 32Mi
+  hf: {endpoint: https://hf-mirror.com}
 ```
 
 ## Project configuration
@@ -76,19 +87,30 @@ registry:
   onTagExists: fail # fail | overwrite | skip
 pack:
   defaults: {compression: zstd, level: 3}
-  weight: {root: /models, compression: none, split: {enabled: true, large: 5Gi, small: 64Mi}}
+  weight:
+    root: /models
+    compression: none
+    split: {enabled: true, large: 5Gi, small: 64Mi}
+    include: ["*.safetensors", "*.json", "tokenizer*"] # remote sources only
+    exclude: ["original/**"]
 models:
   paths: {hf: "/models/{org}/{name}", modelscope: "/models/{org}/{name}"}
 ```
 
 `pack` auto-names as `<prefix>/<repo>:<name>` when `--to` is absent.
 For HF sources, `{name}` is `org--model` (to avoid collisions) and `{rev}`
-is the source revision. `--to-prefix` explicitly overrides the project
-prefix. `repoFormat` accepts `{prefix}`, `{repo}`, `{name}`, `{type}`;
-`tagFormat` accepts `{name}`, `{type}`, `{rev}`.
+is the source revision. `{name}` is lowercased inside the repository path
+(OCI repository names are lowercase); characters a tag cannot hold (e.g.
+the `/` of `refs/pr/1`) become `-`. `--to-prefix` explicitly overrides the
+project prefix and uses the legacy type naming; the global
+`--registry-prefix` replaces only `registry.prefix` and keeps
+`repos`/`repoFormat`/`tagFormat`. `repoFormat` accepts `{prefix}`,
+`{repo}`, `{name}`, `{type}`; `tagFormat` accepts `{name}`, `{type}`, `{rev}`.
 `models.paths` supplies a default container root for `pack weight` when
-the `--source` is `hf://org/name@rev` or `modelscope://org/name@rev` and
-no root is configured. It does **not** download the model. `onTagExists` applies before
+the source is `hf://org/name@rev` or `modelscope://org/name@rev` (passed
+as `--source` or as the remote argument) and no root is configured.
+`pack.weight.include` / `exclude` filter remote model files (see
+[`pack`](pack.md#remote-models)). `onTagExists` applies before
 pack/compose pushes (default: existing overwrite behavior); `--merge`
 and `--locked` bypass this check.
 
@@ -110,12 +132,17 @@ digests even if the project prefix changes later.
 ## Local settings and precedence
 
 `cake-config.local.yaml` (gitignored) may contain only `cache`,
-`upload`, and the `repos` list used by `ls`. Relative `cache.dir` is
-resolved against the project directory. Precedence: CLI flags >
-`SANDWICHCAKE_CACHE_DIR` / `SANDWICHCAKE_UPLOAD_CONCURRENCY` /
-`SANDWICHCAKE_UPLOAD_RETRIES` > local config > user config > built-ins.
+`upload`, `download`, and the `repos` list used by `ls`. Relative
+`cache.dir` is resolved against the project directory. Precedence: CLI
+flags > `SANDWICHCAKE_CACHE_DIR` / `SANDWICHCAKE_UPLOAD_CONCURRENCY` /
+`SANDWICHCAKE_UPLOAD_RETRIES` / `SANDWICHCAKE_DOWNLOAD_CONCURRENCY` /
+`SANDWICHCAKE_DOWNLOAD_RETRIES` / `HF_ENDPOINT` / `MODELSCOPE_DOMAIN` >
+local config > user config > built-ins. For project output fields the
+global `--registry-prefix` flag overrides `registry.prefix`.
 `config show --origin` reports the source of configured values. Registry
-credentials use the Docker credential chain, not these files.
+credentials use the Docker credential chain; model tokens come from
+`HF_TOKEN` (or the `huggingface-cli login` token file),
+`MODELSCOPE_API_TOKEN` and `~/.netrc` — never from these files.
 
 ## Pull and push
 

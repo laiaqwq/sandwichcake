@@ -2,7 +2,9 @@ package layer
 
 import (
 	"fmt"
+	"io"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -15,6 +17,29 @@ type Entry struct {
 	Mode fs.FileMode // file mode including type bits
 	Size int64
 	Link string // symlink target, if symlink
+	// Open, if set, supplies regular-file content starting at off instead
+	// of reading Abs (remote sources).
+	Open func(off int64) (io.ReadCloser, error)
+	// SHA256 is the known hex content digest, if any (skips re-hashing).
+	SHA256 string
+}
+
+// OpenAt returns the entry's content starting at off.
+func (e Entry) OpenAt(off int64) (io.ReadCloser, error) {
+	if e.Open != nil {
+		return e.Open(off)
+	}
+	f, err := os.Open(e.Abs)
+	if err != nil {
+		return nil, err
+	}
+	if off > 0 {
+		if _, err := f.Seek(off, io.SeekStart); err != nil {
+			f.Close()
+			return nil, err
+		}
+	}
+	return f, nil
 }
 
 // IsDir reports whether the entry is a directory.

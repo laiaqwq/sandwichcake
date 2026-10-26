@@ -57,6 +57,12 @@ instead of `--to`, the target ref is derived automatically from
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--source` | – | Provenance URI (`hf://org/name@rev`, `https://…`, `s3://…`) recorded in annotations and used for auto-naming |
+| `--source-commit` | – | Resolved upstream commit, recorded as `…weight.source.commit` (set automatically for remote sources) |
+| `--include`, `--exclude`, `--keep-dir` | – | Remote sources only, see [Remote models](commands/pack.md#remote-models) |
+
+Instead of a directory, `pack weight` accepts `hf://`, `modelscope://`
+or `https://` sources and streams the model straight into the registry
+([Remote models](commands/pack.md#remote-models)).
 
 Weight layers default to no compression: quantized tensors do not
 compress, so skipping gzip saves the pack time entirely

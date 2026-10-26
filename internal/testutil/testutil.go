@@ -98,6 +98,15 @@ func Registry(t *testing.T) (*httptest.Server, *registry.Client) {
 	})
 }
 
+// StatusRegistry is Registry plus upload-status emulation (UploadStatus).
+func StatusRegistry(t *testing.T) (*httptest.Server, *UploadStatus) {
+	t.Helper()
+	us := &UploadStatus{Inner: MountRegistry{ggcrregistry.New(ggcrregistry.WithReferrersSupport(true))}}
+	s := httptest.NewServer(us)
+	t.Cleanup(s.Close)
+	return s, us
+}
+
 // RepoURL returns "host/repo" for the test server.
 func RepoURL(s *httptest.Server, repo string) string {
 	return strings.TrimPrefix(s.URL, "http://") + "/" + repo

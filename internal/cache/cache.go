@@ -105,7 +105,17 @@ const (
 	KindDiffID   = "diffid"   // digest <-> diff_id map
 	KindTarList  = "tarlist"  // tar header listings keyed by diff_id
 	KindUpload   = "upload"   // resumable upload sessions keyed by repo+digest
+	KindStream   = "stream"   // resumable streamed uploads keyed by repo+layer plan
+	KindLayer    = "layer"    // remote layer plan -> uploaded blob
 )
+
+// StreamSession records a streamed upload whose digest is computed on the
+// fly; State is the producer's opaque snapshot (hash states) at Offset.
+type StreamSession struct {
+	Location string `json:"location"`
+	Offset   int64  `json:"offset"`
+	State    []byte `json:"state"`
+}
 
 // UploadSession records a resumable blob upload.
 type UploadSession struct {

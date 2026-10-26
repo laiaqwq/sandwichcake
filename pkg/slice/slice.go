@@ -50,6 +50,9 @@ type PackOptions struct {
 	SourceDateEpoch int64 // -1 = env/default
 	ToolVersion     string
 	DryRun          bool // build locally, don't push
+	// Remote streams files from a remote source instead of reading Dir
+	// (weight type only). Layers are uploaded while they are downloaded.
+	Remote *Remote
 }
 
 // PackResult reports what Pack produced.
@@ -148,15 +151,29 @@ func Pack(ctx context.Context, client *registry.Client, opts PackOptions) (*Pack
 	}
 
 	// Source.
-	entries, err := layer.Scan(opts.Dir)
-	if err != nil {
-		return nil, err
+	remote := opts.Remote
+	if remote != nil && t.Name() != "weight" {
+		return nil, fmt.Errorf("slice: remote sources are only supported for weight, not %q", t.Name())
 	}
 	tmp, err := os.MkdirTemp("", "swcake-pack-*")
 	if err != nil {
 		return nil, err
 	}
 	defer os.RemoveAll(tmp)
+	var entries []layer.Entry
+	var expect map[string]expected
+	if remote != nil {
+		if opts.DryRun {
+			for _, f := range remote.Files {
+				entries = append(entries, layer.Entry{Rel: f.Path, Mode: 0o644, Size: f.Size, SHA256: f.SHA256})
+			}
+			entries = withParentDirs(entries)
+		} else if entries, expect, err = remoteEntries(ctx, remote, tmp); err != nil {
+			return nil, err
+		}
+	} else if entries, err = layer.Scan(opts.Dir); err != nil {
+		return nil, err
+	}
 	src := &stypes.Source{
 		Dir:     opts.Dir,
 		OrigDir: opts.Dir,
@@ -170,8 +187,11 @@ func Pack(ctx context.Context, client *registry.Client, opts PackOptions) (*Pack
 		TmpDir: tmp,
 		State:  map[string]any{},
 	}
-	if err := t.Prepare(ctx, src, src.Opts); err != nil {
-		return nil, err
+	// Remote content is only known after streaming; Prepare runs then.
+	if remote == nil {
+		if err := t.Prepare(ctx, src, src.Opts); err != nil {
+			return nil, err
+		}
 	}
 
 	// Groups.
@@ -186,10 +206,19 @@ func Pack(ctx context.Context, client *registry.Client, opts PackOptions) (*Pack
 	}
 
 	// Type annotations (validated: overlay only from patch).
-	typeAnns := t.Annotate(src)
-	if t.Name() != "patch" {
-		if _, ok := typeAnns[layer.KeyLayerOverlay]; ok {
-			return nil, fmt.Errorf("slice: type %q cannot set %s", t.Name(), layer.KeyLayerOverlay)
+	annotate := func() (map[string]string, error) {
+		anns := t.Annotate(src)
+		if t.Name() != "patch" {
+			if _, ok := anns[layer.KeyLayerOverlay]; ok {
+				return nil, fmt.Errorf("slice: type %q cannot set %s", t.Name(), layer.KeyLayerOverlay)
+			}
+		}
+		return anns, nil
+	}
+	var typeAnns map[string]string
+	if remote == nil {
+		if typeAnns, err = annotate(); err != nil {
+			return nil, err
 		}
 	}
 
@@ -241,44 +270,84 @@ func Pack(ctx context.Context, client *registry.Client, opts PackOptions) (*Pack
 
 	// Build layers (parallel; order preserved).
 	epoch := Epoch(opts.SourceDateEpoch)
-	built := make([]*layer.Layer, len(groups))
-	var wg sync.WaitGroup
-	errs := make([]error, len(groups))
-	sem := make(chan struct{}, 4)
-	for i, g := range groups {
-		wg.Add(1)
-		go func(i int, g layer.Group) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			l, err := layer.Build(g, layer.TarOptions{
-				Root:      opts.Root,
-				MTime:     epoch,
-				UID:       uid,
-				GID:       gid,
-				Chmod:     chmod,
-				NoParents: opts.NoParents,
-			}, comp, level, tmp)
-			built[i] = l
-			errs[i] = err
-		}(i, g)
+	topts := layer.TarOptions{
+		Root:      opts.Root,
+		MTime:     epoch,
+		UID:       uid,
+		GID:       gid,
+		Chmod:     chmod,
+		NoParents: opts.NoParents,
 	}
-	wg.Wait()
-	defer func() {
-		for _, l := range built {
-			if l != nil {
-				l.Close()
-			}
-		}
-	}()
-	for _, err := range errs {
+	baseName := filepath.Base(strings.TrimSuffix(opts.Dir, "/"))
+	var built []v1.Layer
+	switch {
+	case remote != nil && opts.DryRun:
+		sizes, err := planLayers(groups, topts)
 		if err != nil {
 			return nil, err
+		}
+		res := &PackResult{Ref: target, DryRun: true, Slice: stypes.Slice{Ref: target}}
+		for i, g := range groups {
+			res.Slice.Layers = append(res.Slice.Layers, stypes.LayerInfo{
+				Size: sizes[i], MediaType: string(comp.MediaType()),
+				Annotations: map[string]string{layer.KeyLayerName: g.Name, layer.KeyLayerFiles: strconv.Itoa(len(g.Entries))},
+			})
+			res.Size += sizes[i]
+		}
+		return res, nil
+	case remote != nil:
+		ref, _ := client.ParseRef(target)
+		var hashes map[string]string
+		if built, hashes, err = streamLayers(ctx, client, ref.Context(), groups, topts, comp, level, remote, expect); err != nil {
+			return nil, err
+		}
+		for i, e := range src.Entries {
+			if e.IsRegular() && e.SHA256 == "" {
+				src.Entries[i].SHA256 = hashes[e.Rel]
+			}
+		}
+		if err := t.Prepare(ctx, src, src.Opts); err != nil {
+			return nil, err
+		}
+		if typeAnns, err = annotate(); err != nil {
+			return nil, err
+		}
+		if remote.Name != "" {
+			baseName = remote.Name
+		}
+	default:
+		local := make([]*layer.Layer, len(groups))
+		var wg sync.WaitGroup
+		errs := make([]error, len(groups))
+		sem := make(chan struct{}, 4)
+		for i, g := range groups {
+			wg.Add(1)
+			go func(i int, g layer.Group) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				local[i], errs[i] = layer.Build(g, topts, comp, level, tmp)
+			}(i, g)
+		}
+		wg.Wait()
+		defer func() {
+			for _, l := range local {
+				if l != nil {
+					l.Close()
+				}
+			}
+		}()
+		for _, err := range errs {
+			if err != nil {
+				return nil, err
+			}
+		}
+		for _, l := range local {
+			built = append(built, l)
 		}
 	}
 
 	// Image.
-	baseName := filepath.Base(strings.TrimSuffix(opts.Dir, "/"))
 	img := empty.Image
 	img = mutate.MediaType(img, types.OCIManifestSchema1)
 	img = mutate.ConfigMediaType(img, types.OCIConfigJSON)

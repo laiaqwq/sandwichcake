@@ -199,7 +199,7 @@ func (c *Client) uploadBlobBytes(ctx context.Context, repo name.Repository, dige
 		}
 		offset = sess.Offset
 	} else {
-		loc, err := c.startUpload(ctx, repo)
+		loc, _, err := c.startUpload(ctx, repo)
 		if err != nil {
 			return err
 		}
@@ -274,11 +274,12 @@ func (c *Client) uploadBlobBytes(ctx context.Context, repo name.Repository, dige
 	return nil
 }
 
-// startUpload POSTs to /v2/<repo>/blobs/uploads/ and returns the session URL.
-func (c *Client) startUpload(ctx context.Context, repo name.Repository) (string, error) {
+// startUpload POSTs to /v2/<repo>/blobs/uploads/ and returns the session
+// URL and the registry's OCI-Chunk-Min-Length (0 if not advertised).
+func (c *Client) startUpload(ctx context.Context, repo name.Repository) (string, int64, error) {
 	tr, err := c.transport(ctx, repo, repo.Scope(transport.PushScope))
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	u := fmt.Sprintf("%s://%s/v2/%s/blobs/uploads/",
 		repo.Scheme(), repo.RegistryStr(), repo.RepositoryStr())
@@ -289,7 +290,7 @@ func (c *Client) startUpload(ctx context.Context, repo name.Repository) (string,
 		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, nil)
 		if err != nil {
-			return "", err
+			return "", 0, err
 		}
 		resp, err := tr.RoundTrip(req)
 		if err != nil {
@@ -301,9 +302,10 @@ func (c *Client) startUpload(ctx context.Context, repo name.Repository) (string,
 			loc := resp.Header.Get("Location")
 			resp.Body.Close()
 			if loc == "" {
-				return "", fmt.Errorf("registry: upload start missing Location")
+				return "", 0, fmt.Errorf("registry: upload start missing Location")
 			}
-			return resolveLocation(u, loc), nil
+			min, _ := strconv.ParseInt(resp.Header.Get("OCI-Chunk-Min-Length"), 10, 64)
+			return resolveLocation(u, loc), min, nil
 		}
 		lastErr = fmt.Errorf("start upload: %s", resp.Status)
 		resp.Body.Close()
@@ -311,7 +313,7 @@ func (c *Client) startUpload(ctx context.Context, repo name.Repository) (string,
 			break
 		}
 	}
-	return "", fmt.Errorf("registry: %w", lastErr)
+	return "", 0, fmt.Errorf("registry: %w", lastErr)
 }
 
 // queryUpload GETs the upload status and returns the server-side offset.

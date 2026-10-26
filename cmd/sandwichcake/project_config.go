@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/google/go-containerregistry/pkg/name"
 	"gopkg.in/yaml.v3"
 )
 
@@ -41,6 +42,10 @@ type packDefault struct {
 	Split       *splitConfig `yaml:"split,omitempty"`
 	Owner       string       `yaml:"owner,omitempty"`
 	Chmod       string       `yaml:"chmod,omitempty"`
+	// Include/Exclude filter remote weight files (gitignore-style globs on
+	// repo paths); pack.weight only.
+	Include []string `yaml:"include,omitempty"`
+	Exclude []string `yaml:"exclude,omitempty"`
 }
 
 type splitConfig struct {
@@ -148,8 +153,14 @@ func currentProject() (string, error) {
 func loadProject() (projectConfig, string, error) {
 	var cfg projectConfig
 	dir, err := currentProject()
-	if err != nil || dir == "" {
+	if err != nil {
 		return cfg, dir, err
+	}
+	if dir == "" {
+		if registryPrefix != "" {
+			return cfg, dir, fmt.Errorf("--registry-prefix requires a project (cake-config.yaml); use --to-prefix outside a project")
+		}
+		return cfg, dir, nil
 	}
 	path := filepath.Join(dir, "cake-config.yaml")
 	if err := readYAML(path, &cfg); err != nil {
@@ -157,6 +168,13 @@ func loadProject() (projectConfig, string, error) {
 	}
 	if cfg.APIVersion != "sandwichcake.io/v1" || cfg.Kind != "CakeConfig" {
 		return cfg, dir, fmt.Errorf("%s: expected apiVersion sandwichcake.io/v1 and kind CakeConfig", path)
+	}
+	if registryPrefix != "" {
+		p := strings.TrimSuffix(registryPrefix, "/")
+		if _, err := name.NewRepository(p + "/x"); err != nil {
+			return cfg, dir, fmt.Errorf("--registry-prefix %q: %w", registryPrefix, err)
+		}
+		cfg.Registry.Prefix = p
 	}
 	if cfg.Registry.Prefix != "" {
 		cfg.Registry.Prefix = strings.TrimSuffix(cfg.Registry.Prefix, "/")
@@ -187,9 +205,15 @@ func loadProject() (projectConfig, string, error) {
 		if err := validatePack(opts); err != nil {
 			return cfg, dir, fmt.Errorf("%s: pack.%s: %w", path, kind, err)
 		}
+		if kind != "weight" && (opts.Include != nil || opts.Exclude != nil) {
+			return cfg, dir, fmt.Errorf("%s: pack.%s: include/exclude are only supported for pack.weight", path, kind)
+		}
 	}
 	if err := validatePack(cfg.Pack.Defaults); err != nil {
 		return cfg, dir, fmt.Errorf("%s: pack.defaults: %w", path, err)
+	}
+	if cfg.Pack.Defaults.Include != nil || cfg.Pack.Defaults.Exclude != nil {
+		return cfg, dir, fmt.Errorf("%s: pack.defaults: include/exclude are only supported for pack.weight", path)
 	}
 	for provider, path := range cfg.Models.Paths {
 		if provider != "hf" && provider != "modelscope" {
@@ -246,7 +270,8 @@ func (r registryConfig) repo(kind, name string) (string, error) {
 	if format == "" {
 		format = "{prefix}/{repo}"
 	}
-	return strings.NewReplacer("{prefix}", r.Prefix, "{repo}", repo, "{name}", name, "{type}", kind).Replace(format), nil
+	// OCI repository names are lowercase-only; tags keep the original case.
+	return strings.NewReplacer("{prefix}", r.Prefix, "{repo}", repo, "{name}", strings.ToLower(name), "{type}", kind).Replace(format), nil
 }
 
 func (r registryConfig) expand(ref string) (string, error) {
@@ -282,6 +307,12 @@ func (p packConfig) forType(kind string) packDefault {
 	}
 	if b.Chmod != "" {
 		a.Chmod = b.Chmod
+	}
+	if b.Include != nil {
+		a.Include = b.Include
+	}
+	if b.Exclude != nil {
+		a.Exclude = b.Exclude
 	}
 	if b.Split != nil {
 		if a.Split == nil {
@@ -332,7 +363,23 @@ func projectPackTarget(kind, dir, lock string, cfg registryConfig, opts map[stri
 		format = "{name}"
 	}
 	tag := strings.NewReplacer("{name}", name, "{type}", kind, "{rev}", rev).Replace(format)
-	return repo + ":" + tag, nil
+	return repo + ":" + tagSafe(tag), nil
+}
+
+var tagUnsafe = regexp.MustCompile(`[^A-Za-z0-9_.-]`)
+
+// tagSafe maps a generated tag (e.g. containing a refs/pr/1 revision) onto
+// the OCI tag grammar [A-Za-z0-9_][A-Za-z0-9._-]{0,127}.
+func tagSafe(tag string) string {
+	tag = tagUnsafe.ReplaceAllString(tag, "-")
+	tag = strings.TrimLeft(tag, ".-")
+	if len(tag) > 128 {
+		tag = tag[:128]
+	}
+	if tag == "" {
+		return "latest"
+	}
+	return tag
 }
 
 func modelRoot(paths map[string]string, source string) (string, error) {

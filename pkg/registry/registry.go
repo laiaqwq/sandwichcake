@@ -70,6 +70,9 @@ func New(opts Options) *Client {
 	return &Client{opts: opts, transports: map[string]http.RoundTripper{}}
 }
 
+// Cache returns the client's metadata cache (nil if none).
+func (c *Client) Cache() *cache.Cache { return c.opts.Cache }
+
 func (c *Client) nameOpts() []name.Option {
 	if c.opts.Insecure {
 		return []name.Option{name.Insecure}

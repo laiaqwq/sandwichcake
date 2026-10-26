@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/laiaqwq/sandwichcake/pkg/fetch"
 	"github.com/laiaqwq/sandwichcake/pkg/layer"
 	"github.com/laiaqwq/sandwichcake/pkg/slice"
 	stypes "github.com/laiaqwq/sandwichcake/pkg/types"
@@ -27,6 +28,7 @@ type packFlags struct {
 	merge              bool
 	dryRun             bool
 	fromLock           string
+	remote             remoteFlags
 	typeVals           map[string]*string
 	typeBools          map[string]*bool
 }
@@ -36,9 +38,14 @@ func packCmd() *cobra.Command {
 	for _, t := range stypes.All() {
 		t := t
 		f := &packFlags{typeVals: map[string]*string{}, typeBools: map[string]*bool{}}
+		use, short := t.Name()+" <dir>", fmt.Sprintf("pack a %s directory", t.Name())
+		if t.Name() == "weight" {
+			use = "weight <dir | hf://org/name[@rev] | modelscope://org/name[@rev] | https://...>"
+			short = "pack a weight directory, or stream a remote model into the registry"
+		}
 		cmd := &cobra.Command{
-			Use:   t.Name() + " <dir>",
-			Short: fmt.Sprintf("pack a %s directory", t.Name()),
+			Use:   use,
+			Short: short,
 			Args:  cobra.MaximumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 				return runPack(cmd, t, f, args)
@@ -64,6 +71,9 @@ func packCmd() *cobra.Command {
 		if t.Name() == "venv" {
 			fl.StringVar(&f.fromLock, "from-lock", "", "build the venv from a lock file using local uv")
 		}
+		if t.Name() == "weight" {
+			addRemoteFlags(cmd, &f.remote)
+		}
 		for _, o := range t.Options() {
 			if o.Bool {
 				var b bool
@@ -86,6 +96,24 @@ func runPack(cmd *cobra.Command, t stypes.Type, f *packFlags, args []string) err
 		return err
 	}
 	defaults := project.Pack.forType(t.Name())
+	var spec *fetch.Spec
+	if t.Name() == "weight" && len(args) == 1 && fetch.IsRemote(args[0]) {
+		if cmd.Flags().Changed("source") || cmd.Flags().Changed("source-commit") {
+			return fmt.Errorf("--source/--source-commit are derived from the remote argument")
+		}
+		env, _, err := effectiveConfig()
+		if err != nil {
+			return err
+		}
+		s, err := fetch.Parse(args[0], endpoints(env))
+		if err != nil {
+			return err
+		}
+		spec = &s
+		*f.typeVals["source"] = s.Canonical()
+	} else if f.remote.keepDir != "" || cmd.Flags().Changed("include") || cmd.Flags().Changed("exclude") {
+		return fmt.Errorf("--include/--exclude/--keep-dir need a remote source (hf://, modelscope:// or https://)")
+	}
 	if !cmd.Flags().Changed("root") {
 		f.root = defaults.Root
 		if f.root == "" && t.Name() == "weight" {
@@ -147,6 +175,8 @@ func runPack(cmd *cobra.Command, t stypes.Type, f *packFlags, args []string) err
 		extraRewrites = append(extraRewrites, rw)
 		// from-lock always produces an embedded python venv
 		*f.typeVals["python"] = "embedded"
+	} else if spec != nil {
+		dir = spec.Name() // naming only; content streams from the remote
 	} else {
 		if len(args) == 0 {
 			return fmt.Errorf("dir argument required")
@@ -181,6 +211,16 @@ func runPack(cmd *cobra.Command, t stypes.Type, f *packFlags, args []string) err
 			typeOpts[name] = "true"
 		}
 	}
+	var remote *slice.Remote
+	if spec != nil {
+		var commit string
+		if remote, commit, err = listRemote(cmd, *spec, &f.remote, defaults); err != nil {
+			return err
+		}
+		if commit != "" {
+			typeOpts["source-commit"] = commit
+		}
+	}
 	if f.to == "" && f.toPrefix != "" {
 		if project.Kind != "" && !cmd.Flags().Changed("to-prefix") {
 			f.to, err = projectPackTarget(t.Name(), dir, f.fromLock, project.Registry, typeOpts)
@@ -212,13 +252,15 @@ func runPack(cmd *cobra.Command, t stypes.Type, f *packFlags, args []string) err
 		Owner: f.owner, Chmod: f.chmod, NoParents: f.noParents,
 		RewritePrefix: rewrites, ArtifactCompat: f.artifactCompat,
 		Merge: f.merge, TypeOpts: typeOpts, DryRun: f.dryRun,
-		SourceDateEpoch: -1,
+		SourceDateEpoch: -1, Remote: remote,
 	})
 	if err != nil {
 		return err
 	}
 	out := cmd.OutOrStdout()
-	if f.dryRun {
+	if f.dryRun && remote != nil {
+		printRemotePlan(cmd, res)
+	} else if f.dryRun {
 		fmt.Fprintf(out, "dry-run: %s -> %s (%d layers)\n", res.Ref, res.Digest, len(res.Slice.Layers))
 	} else {
 		fmt.Fprintf(out, "pushed %s\n  digest %s\n", res.Ref, res.Digest)
@@ -264,7 +306,7 @@ func defaultPackTarget(t stypes.Type, dir, lock, prefix, tagFormat string, typeO
 		tagFormat = "{name}"
 	}
 	tag := strings.NewReplacer("{name}", name, "{type}", t.Name(), "{rev}", rev).Replace(tagFormat)
-	return repo + ":" + tag, nil
+	return repo + ":" + tagSafe(tag), nil
 }
 
 func parseSizeOr(s string, def int64) (int64, error) {

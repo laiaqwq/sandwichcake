@@ -10,12 +10,80 @@ import (
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
+
+	"github.com/laiaqwq/sandwichcake/pkg/layer"
 )
 
 type cliConfig struct {
-	Repos  []string     `yaml:"repos,omitempty"`
-	Cache  cacheConfig  `yaml:"cache,omitempty"`
-	Upload uploadConfig `yaml:"upload,omitempty"`
+	Repos    []string       `yaml:"repos,omitempty"`
+	Cache    cacheConfig    `yaml:"cache,omitempty"`
+	Upload   uploadConfig   `yaml:"upload,omitempty"`
+	Download downloadConfig `yaml:"download,omitempty"`
+}
+
+// downloadConfig tunes remote model downloads. None of it affects output
+// digests (content is verified), so it is environment-only.
+type downloadConfig struct {
+	Concurrency int            `yaml:"concurrency,omitempty"` // layers streamed in parallel
+	Connections int            `yaml:"connections,omitempty"` // ranged requests per file
+	SegmentSize string         `yaml:"segmentSize,omitempty"` // bytes per ranged request, e.g. 32Mi
+	Retries     int            `yaml:"retries,omitempty"`
+	HF          endpointConfig `yaml:"hf,omitempty"`
+	ModelScope  endpointConfig `yaml:"modelscope,omitempty"`
+}
+
+type endpointConfig struct {
+	Endpoint string `yaml:"endpoint,omitempty"`
+}
+
+// downloadKeys are the download.* fields in `config show --origin` order.
+var downloadKeys = []string{"download.concurrency", "download.connections", "download.segmentSize", "download.retries", "download.hf.endpoint", "download.modelscope.endpoint"}
+
+func (d *downloadConfig) fields() map[string]any {
+	return map[string]any{
+		"download.concurrency":         &d.Concurrency,
+		"download.connections":         &d.Connections,
+		"download.segmentSize":         &d.SegmentSize,
+		"download.retries":             &d.Retries,
+		"download.hf.endpoint":         &d.HF.Endpoint,
+		"download.modelscope.endpoint": &d.ModelScope.Endpoint,
+	}
+}
+
+// mergeDownload copies the set fields of src into dst, recording origin.
+func mergeDownload(dst, src *downloadConfig, origin string, origins map[string]string) {
+	to := dst.fields()
+	for key, v := range src.fields() {
+		switch p := v.(type) {
+		case *int:
+			if *p != 0 {
+				*to[key].(*int) = *p
+				origins[key] = origin
+			}
+		case *string:
+			if *p != "" {
+				*to[key].(*string) = *p
+				origins[key] = origin
+			}
+		}
+	}
+}
+
+func (d downloadConfig) validate() error {
+	if d.Concurrency < 0 || d.Connections < 0 || d.Retries < 0 {
+		return fmt.Errorf("download settings must be positive")
+	}
+	if d.SegmentSize != "" {
+		if n, err := layer.ParseSize(d.SegmentSize); err != nil || n <= 0 {
+			return fmt.Errorf("download.segmentSize: invalid size %q", d.SegmentSize)
+		}
+	}
+	for _, ep := range []string{d.HF.Endpoint, d.ModelScope.Endpoint} {
+		if ep != "" && !strings.HasPrefix(ep, "https://") && !strings.HasPrefix(ep, "http://") {
+			return fmt.Errorf("download endpoint %q must be an http(s) URL", ep)
+		}
+	}
+	return nil
 }
 
 type cacheConfig struct {
@@ -75,6 +143,9 @@ func effectiveConfig() (cliConfig, map[string]string, error) {
 	if cfg.Repos != nil {
 		origins["repos"] = path
 	}
+	global := cfg.Download
+	cfg.Download = downloadConfig{}
+	mergeDownload(&cfg.Download, &global, path, origins)
 	project, err := currentProject()
 	if err != nil {
 		return cfg, nil, err
@@ -101,6 +172,7 @@ func effectiveConfig() (cliConfig, map[string]string, error) {
 			cfg.Repos = override.Repos
 			origins["repos"] = local
 		}
+		mergeDownload(&cfg.Download, &override.Download, local, origins)
 	}
 	if value := os.Getenv("SANDWICHCAKE_CACHE_DIR"); value != "" {
 		cfg.Cache.Dir = value
@@ -112,6 +184,8 @@ func effectiveConfig() (cliConfig, map[string]string, error) {
 	}{
 		{"upload.concurrency", "SANDWICHCAKE_UPLOAD_CONCURRENCY", &cfg.Upload.Concurrency},
 		{"upload.retries", "SANDWICHCAKE_UPLOAD_RETRIES", &cfg.Upload.Retries},
+		{"download.concurrency", "SANDWICHCAKE_DOWNLOAD_CONCURRENCY", &cfg.Download.Concurrency},
+		{"download.retries", "SANDWICHCAKE_DOWNLOAD_RETRIES", &cfg.Download.Retries},
 	} {
 		if value := os.Getenv(item.env); value != "" {
 			n, err := strconv.Atoi(value)
@@ -122,8 +196,23 @@ func effectiveConfig() (cliConfig, map[string]string, error) {
 			origins[item.key] = item.env
 		}
 	}
+	// Same variables the huggingface_hub and modelscope SDKs honor.
+	if value := os.Getenv("HF_ENDPOINT"); value != "" {
+		cfg.Download.HF.Endpoint = value
+		origins["download.hf.endpoint"] = "HF_ENDPOINT"
+	}
+	if value := os.Getenv("MODELSCOPE_DOMAIN"); value != "" {
+		if !strings.Contains(value, "://") {
+			value = "https://" + value
+		}
+		cfg.Download.ModelScope.Endpoint = value
+		origins["download.modelscope.endpoint"] = "MODELSCOPE_DOMAIN"
+	}
 	if cfg.Upload.Concurrency < 0 || cfg.Upload.Retries < 0 {
 		return cfg, nil, fmt.Errorf("upload settings must be positive")
+	}
+	if err := cfg.Download.validate(); err != nil {
+		return cfg, nil, err
 	}
 	return cfg, origins, nil
 }
@@ -233,10 +322,13 @@ func configCmd() *cobra.Command {
 			}
 			_, err = cmd.OutOrStdout().Write(data)
 			if err == nil && origin {
-				for _, key := range []string{"cache.dir", "upload.concurrency", "upload.retries", "repos"} {
+				for _, key := range append([]string{"cache.dir", "upload.concurrency", "upload.retries", "repos"}, downloadKeys...) {
 					if sources[key] != "" {
 						fmt.Fprintf(cmd.OutOrStdout(), "# %s: %s\n", key, sources[key])
 					}
+				}
+				if project.Kind != "" && registryPrefix != "" {
+					fmt.Fprintln(cmd.OutOrStdout(), "# registry.prefix: --registry-prefix")
 				}
 				if project.Kind != "" {
 					dir, _ := currentProject()
@@ -265,7 +357,7 @@ func configCmd() *cobra.Command {
 	initGlobal.Flags().BoolVar(&global, "global", false, "create global defaults")
 	cmd.AddCommand(initGlobal)
 	cmd.AddCommand(&cobra.Command{
-		Use: "set <key> <value>", Short: "Set cache-dir, upload-concurrency, upload-retries or repos", Args: cobra.ExactArgs(2),
+		Use: "set <key> <value>", Short: "Set cache-dir, upload-*, download-* (concurrency, connections, retries, segment-size), hf-endpoint, modelscope-endpoint or repos", Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := loadConfig()
 			if err != nil {
@@ -334,6 +426,18 @@ func (cfg *cliConfig) set(key, value string) error {
 				cfg.Repos = append(cfg.Repos, repo)
 			}
 		}
+	case "download-concurrency", "download-connections", "download-retries":
+		n := 0
+		if value != "" {
+			var err error
+			if n, err = strconv.Atoi(value); err != nil || n < 1 {
+				return fmt.Errorf("%s must be a positive integer", key)
+			}
+		}
+		*cfg.Download.fields()["download."+strings.TrimPrefix(key, "download-")].(*int) = n
+	case "download-segment-size", "hf-endpoint", "modelscope-endpoint":
+		*cfg.Download.fields()[downloadStringKey(key)].(*string) = value
+		return cfg.Download.validate()
 	default:
 		return fmt.Errorf("unknown or project-only config key %q (use cake-config.yaml for output settings)", key)
 	}
@@ -356,7 +460,24 @@ func (cfg cliConfig) get(key string) (string, error) {
 		return strconv.Itoa(cfg.Upload.Retries), nil
 	case "repos":
 		return strings.Join(cfg.Repos, ","), nil
+	case "download-concurrency", "download-connections", "download-retries":
+		if n := *cfg.Download.fields()["download."+strings.TrimPrefix(key, "download-")].(*int); n != 0 {
+			return strconv.Itoa(n), nil
+		}
+		return "", nil
+	case "download-segment-size", "hf-endpoint", "modelscope-endpoint":
+		return *cfg.Download.fields()[downloadStringKey(key)].(*string), nil
 	default:
 		return "", fmt.Errorf("unknown config key %q", key)
 	}
+}
+
+func downloadStringKey(key string) string {
+	switch key {
+	case "hf-endpoint":
+		return "download.hf.endpoint"
+	case "modelscope-endpoint":
+		return "download.modelscope.endpoint"
+	}
+	return "download.segmentSize"
 }

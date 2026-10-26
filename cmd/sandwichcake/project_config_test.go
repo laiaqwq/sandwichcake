@@ -203,6 +203,56 @@ func TestNamedCakeShortRefsAndLocked(t *testing.T) {
 	}
 }
 
+func TestRegistryPrefixOverride(t *testing.T) {
+	isolateEnv(t)
+	srv, _ := testutil.Registry(t)
+	host := strings.TrimPrefix(srv.URL, "http://")
+	project := t.TempDir()
+	run(t, "init", project)
+	config := filepath.Join(project, "cake-config.yaml")
+	prefix1, prefix2 := host+"/one", host+"/two"
+	if err := os.WriteFile(config, []byte("apiVersion: sandwichcake.io/v1\nkind: CakeConfig\nregistry:\n  prefix: "+prefix1+"\n  repos: {image: infer}\npack:\n  other: {root: /etc/x}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(t.TempDir(), "conf")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "f"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	insecure := "--insecure-registry=" + host
+	out := run(t, insecure, "--project", project, "--registry-prefix", prefix2+"/", "pack", "other", dir, "--dry-run")
+	if !strings.Contains(out, "dry-run: "+prefix2+"/other:conf") {
+		t.Fatalf("override unused: %s", out)
+	}
+	out = run(t, "--project", project, "--registry-prefix", prefix2, "config", "show", "--origin")
+	if !strings.Contains(out, "prefix: "+prefix2) || !strings.Contains(out, "# registry.prefix: --registry-prefix") {
+		t.Fatalf("config show: %s", out)
+	}
+
+	for _, tag := range []string{"base", "slice"} {
+		run(t, insecure, "--project", project, "--registry-prefix", prefix2, "pack", "other", dir, "--to", prefix2+"/other:"+tag)
+	}
+	cakeFile := filepath.Join(project, "cake", "serve.yaml")
+	cakeYAML := "apiVersion: sandwichcake.io/v1\nkind: Cake\ntarget: {ref: \"image:serve\"}\nbase: {ref: \"other:base\"}\nslices:\n  - {ref: \"other:slice\"}\n"
+	if err := os.WriteFile(cakeFile, []byte(cakeYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out = run(t, insecure, "--project", project, "--registry-prefix", prefix2, "compose", "serve", "--yes")
+	if !strings.Contains(out, prefix2+"/infer:serve") {
+		t.Fatalf("compose target: %s", out)
+	}
+	run(t, insecure, "--project", project, "--registry-prefix", prefix2, "compose", "serve", "--locked", "--yes")
+	if _, err := runErr(t, insecure, "--project", project, "--registry-prefix", host+"/three", "compose", "serve", "--locked", "--yes"); err == nil || !strings.Contains(err.Error(), "rerun without --locked") {
+		t.Fatalf("locked mismatch: %v", err)
+	}
+
+	if _, err := runErr(t, "--registry-prefix", prefix2, "pack", "other", dir, "--root", "/x", "--dry-run"); err == nil || !strings.Contains(err.Error(), "requires a project") {
+		t.Fatalf("no project: %v", err)
+	}
+}
+
 func TestOCISync(t *testing.T) {
 	isolateEnv(t)
 	srv, _ := testutil.Registry(t)

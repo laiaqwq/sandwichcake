@@ -44,20 +44,20 @@ func TestDefaultPackTarget(t *testing.T) {
 			name: "hf weight default rev",
 			typ:  weight, dir: "/tmp/qwen", prefix: "reg.example.com/ai",
 			typeOpts: map[string]string{"source": "hf://Qwen/Qwen3-8B"},
-			want:     "reg.example.com/ai/Qwen--Qwen3-8B:latest",
+			want:     "reg.example.com/ai/qwen--qwen3-8b:latest",
 		},
 		{
 			name: "hf weight explicit rev",
 			typ:  weight, dir: "/tmp/qwen", prefix: "reg.example.com/ai",
 			typeOpts: map[string]string{"source": "hf://Qwen/Qwen3-8B@v2"},
-			want:     "reg.example.com/ai/Qwen--Qwen3-8B:v2",
+			want:     "reg.example.com/ai/qwen--qwen3-8b:v2",
 		},
 		{
 			name: "custom tag format",
 			typ:  weight, dir: "/tmp/qwen", prefix: "reg.example.com/ai",
 			tagFormat: "{type}-{name}-{rev}",
 			typeOpts:  map[string]string{"source": "hf://Qwen/Qwen3-8B@v2"},
-			want:      "reg.example.com/ai/Qwen--Qwen3-8B:weight-Qwen3-8B-v2",
+			want:      "reg.example.com/ai/qwen--qwen3-8b:weight-Qwen3-8B-v2",
 		},
 		{
 			name: "venv lock basename",

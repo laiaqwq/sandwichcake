@@ -14,10 +14,11 @@ import (
 )
 
 var (
-	insecureHosts []string
-	cacheDir      string
-	verbose       bool
-	projectDir    string
+	insecureHosts  []string
+	cacheDir       string
+	verbose        bool
+	projectDir     string
+	registryPrefix string
 )
 
 func main() {
@@ -36,6 +37,7 @@ func newRoot() *cobra.Command {
 	root.PersistentFlags().StringArrayVar(&insecureHosts, "insecure-registry", nil, "registry host to access over plain HTTP (repeatable)")
 	root.PersistentFlags().StringVar(&cacheDir, "cache-dir", "", "metadata cache dir (default ~/.cache/sandwichcake)")
 	root.PersistentFlags().StringVar(&projectDir, "project", "", "project directory (default: discover from cwd)")
+	root.PersistentFlags().StringVar(&registryPrefix, "registry-prefix", "", "override registry.prefix from cake-config.yaml")
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
 	root.AddCommand(
 		packCmd(),
