@@ -2,5 +2,3 @@ bin/
 harbor-robot.env
 *.env
 !*.env.example
-DESIGN.md
-AGENTS.md
