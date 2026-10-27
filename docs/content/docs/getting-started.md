@@ -42,8 +42,11 @@ sandwichcake pack weight ./models/qwen3-8b \
 
 `--root` is required unless `pack.<type>.root` is set in the project's
 `cake-config.yaml`: it is the absolute path the directory
-contents take inside the composed image. Everything else (compression,
-layer splitting, ownership) has a per-type default you can override.
+contents take inside the composed image. For `pack weight` with an
+`hf://` or `modelscope://` `--source`, `models.paths.<provider>` can
+supply it instead — even when packing a local directory. Everything
+else (compression, layer splitting, ownership) has a per-type default
+you can override.
 
 ### 2. Write a cake.yaml
 
@@ -80,10 +83,13 @@ anything is pushed.
 sandwichcake compose -f cake.yaml
 ```
 
-Confirm the plan and the composed manifest is pushed to `target.ref`,
-along with metadata artifacts for each slice. A `cake.lock` with pinned
-digests is written next to `cake.yaml`; replay it bit-identically with
-`compose --locked`.
+The composed image or index is pushed to `target.ref`. The transfer
+plan prints only with `-v` — use [`plan`](commands/plan.md) to preview
+the classification — and when blobs must be copied, a byte-count
+prompt asks to confirm. Slice metadata artifacts were already pushed by
+`pack` into each slice's own repository; compose does not re-push them.
+A `cake.lock` with pinned digests is written next to `cake.yaml`;
+replay it bit-identically with `compose --locked`.
 
 ### 5. Inspect the result
 
@@ -119,4 +125,6 @@ standalone `cake.yaml` and explicit flags without a project.
 
 sandwichcake uses the standard Docker credential chain
 (`~/.docker/config.json`, credential helpers). For plain-HTTP registries
-add `--insecure-registry <host>` (repeatable).
+pass `--insecure-registry <host>` (repeatable). The host value is not
+scoped: any non-empty value switches **all** registry traffic in that
+invocation to plain HTTP.

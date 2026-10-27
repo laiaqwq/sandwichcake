@@ -16,10 +16,11 @@ other (schema 1, default compression gzip)
 patch (schema 1, default compression gzip)
   --base         expected base repo@digest this patch applies to (optional) (default "")
 venv (schema 1, default compression zstd)
-  --lock         path to a lock file (uv.lock, poetry.lock, requirements.txt) to attach as metadata (default "")
   --python       embedded|system: whether the venv carries its own interpreter (default "embedded")
+  --lock         path to a lock file (uv.lock, poetry.lock, requirements.txt) to attach as metadata (default "")
 weight (schema 1, default compression none)
   --source       provenance, e.g. hf://org/name@rev, https://, s3:// (default "")
+  --source-commit resolved upstream commit of --source (set automatically for remote sources) (default "")
 ```
 
 Each type appears as `<name> (schema <n>, default compression <alg>)`,

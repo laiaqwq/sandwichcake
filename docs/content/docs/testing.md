@@ -13,10 +13,19 @@ go build ./... && go vet ./... && go test -count=1 ./...
 
 `-count=1` disables the test cache so the current tree is actually
 exercised. The suite uses local `httptest` registries only — no
-network access is needed.
+network access is needed. `internal/testutil` also provides
+`UploadStatus` (resumable-upload status + lost-ack emulation) and the
+`Hub` HF/ModelScope fake (302→CDN, pagination, corrupt/flaky knobs —
+`internal/testutil/hub.go`).
 
-Race-detector runs for the packages exercising globals and the report
-pipeline:
+A few tests need local tools beyond Go itself: `bash` (releasetest
+runs the workflow's embedded script), the `go` toolchain (testutil's
+ELF builder), and `git` (guarded by an `exec.LookPath` skip in
+project_config_test.go).
+
+Race-detector runs for the packages exercising shared state —
+`cmd/sandwichcake`'s package-level flag vars, `internal/cache`'s
+mutex + env-derived `Dir()` — and the `pkg/inspect` report pipeline:
 
 ```sh
 go test -race -count=1 ./cmd/sandwichcake ./pkg/inspect ./internal/cache
@@ -54,13 +63,15 @@ shell against real tag values:
 go test -count=1 ./internal/releasetest ./internal/doctest
 ```
 
-`internal/doctest` also walks the docs markdown and rejects broken or
-non-`.md` body links (a Hextra requirement).
+`internal/doctest` also walks the docs markdown and `README.md`,
+rejecting broken or non-`.md` body links (a Hextra requirement) and
+validating `#anchor` fragments.
 
 ## Docs site
 
-The Hugo docs build (requires `hugo` installed and the vendored module
-cache populated):
+The Hugo docs build (requires `hugo` plus Go on `PATH` — hextra is a
+Hugo module fetched into the module cache; only the flexsearch search
+bundle is vendored, at `docs/assets/js/`):
 
 ```sh
 cd docs && hugo --gc --minify --panicOnWarning -d <dest>

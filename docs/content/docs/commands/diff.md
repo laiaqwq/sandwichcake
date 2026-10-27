@@ -25,8 +25,8 @@ removed/added even when the file contents look the same:
 $ sandwichcake diff reg/ai/infer:v1 reg/ai/infer:v2
 = sha256:9be4…           29801832 shared
 - sha256:51cd…          429916160 only in reg/ai/infer:v1
-+ sha256:8fa0…          432439296 only in reg/ai/infer:v2
 = sha256:77e2…          5261334937 shared
++ sha256:8fa0…          432439296 only in reg/ai/infer:v2
 ```
 
 The digest shown is the compressed layer digest (19 characters) and the
@@ -51,4 +51,12 @@ sandwichcake diff app:rebuilt registry.example.com/app:v1
 
 - Both indexes and single manifests work; index children are flattened
   before comparison.
-- Output order is not sorted — pipe to `sort` for stable diffs.
+- All `=`/`-` lines print first, then every `+` line as a trailing
+  block; order within each group is unsorted — pipe to `sort` for
+  stable diffs.
+- Exit code is 0 whenever the diff runs, even when layers differ —
+  only errors exit non-zero, so gate scripts on the output, not `$?`.
+- `=`/`-` lines always show `<ref-a>`'s compressed digest and size,
+  even when `<ref-b>` stores the same diff_id compressed differently.
+- Layers sharing a diff_id within one ref collapse to a single line
+  (rows are map-keyed by diff_id, not counted).

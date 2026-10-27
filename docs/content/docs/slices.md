@@ -13,11 +13,16 @@ base image.
 - **Manifest** — a standard OCI image manifest. Manifest-level
   annotations mark it a slice (`kind = slice`) and may declare the
   platform (`any` for platform-agnostic slices).
-- **Layers** — `application/vnd.sandwichcake.*` (or standard OCI) tar
-  media types, `+gzip` / `+zstd` / uncompressed. Each layer *descriptor*
-  in the manifest carries the sandwichcake annotations describing that
-  layer: type, container root, name, part, file count, tool version,
-  provenance and type-specific data.
+- **Layers** — standard OCI tar media types only:
+  `application/vnd.oci.image.layer.v1.tar`, `+gzip` or `+zstd`. The
+  `application/vnd.sandwichcake.*` media types belong to the metadata
+  artifact below, never to slice layers. Each layer *descriptor* in
+  the manifest carries the sandwichcake annotations describing that
+  layer: type, schema, container root, name, part, file count, tool
+  version and type-specific data. Provenance keys are type-specific
+  only (e.g. `weight.source`, `patch.base`) — the generic
+  `source.image` / `source.index` keys are stamped at compose time
+  onto external (non-slice) layers, not written by `pack`.
 - **Annotations** — all keys live in the
   `com.github.baba.sandwichcake.*` namespace. Type-specific keys are
   namespaced further per type.
@@ -28,9 +33,10 @@ base image.
 ## Deterministic packing
 
 Identical inputs produce identical manifest digests. Tar headers are
-normalized: timestamps come from `SOURCE_DATE_EPOCH` (or Unix 0), and
-ordering, uid/gid and modes are controlled by `--owner`, `--chmod` and
-`--no-parents`. This is what makes `compose --locked` reruns and the
+normalized: timestamps come from `SOURCE_DATE_EPOCH` (or Unix 0),
+entries are always ordered by path, and `--owner`, `--chmod` and
+`--no-parents` control uid/gid, modes and ancestor-directory entries
+respectively. This is what makes `compose --locked` reruns and the
 dedup of the transfer plan possible.
 
 ## Layer splitting
@@ -43,16 +49,26 @@ layers using per-type rules plus two thresholds:
 | `--small-threshold` | 64Mi | Files below this may be grouped into a shared layer |
 | `--large-threshold` | 5Gi | Files above this always get their own layer |
 
+`--no-split` disables the size binning only; per-type `Separate` layout
+rules still apply — `pack venv --no-split` still puts `.python/` in its
+own layer, so a single layer is not guaranteed.
+
 Splitting matters for transfer efficiency: a rerun that only changes a
 few small files only needs to copy the small-files layer, not a 5GiB
 weight blob.
 
 ## Path rewriting
 
-`--rewrite-prefix src=dst` (repeatable) rewrites path prefixes as files
-are packed, and `--root` sets the base path inside the image. Together
-they let you pack a build directory into a different runtime layout
+`--root` sets the base path inside the image — tar member names are
+always `<root>/<relative path>`, so `--root` alone relocates the tree
 without staging a copy.
+
+`--rewrite-prefix src=dst` (repeatable) is a venv-only option; other
+types accept but silently ignore it. It rewrites file *contents*, not
+packed paths: literal `src`→`dst` text replacement in `pyvenv.cfg`,
+text files in `bin/` (shebangs), `*.pth` in site-packages, and
+`_sysconfigdata_*.py` / `config-*/Makefile` under `.python/lib/`.
+ELF and binary files are skipped.
 
 ## Metadata artifacts {#metadata}
 
@@ -69,6 +85,9 @@ Fetch individual metadata files with
 
 ## Merging into an index
 
-`pack --merge` merges the new slice manifest into an existing multi-arch
-index at the target tag instead of replacing it — for example when
-packing the same slice for `linux/amd64` and `linux/arm64` separately.
+`pack --merge` adds the new slice manifest to the target tag instead of
+replacing it: an existing index gets the new entry merged in
+(replacing any same-platform entry), an existing single manifest is
+preserved and converted into a two-entry index, and an unused tag gets
+a fresh index — for example when packing the same slice for
+`linux/amd64` and `linux/arm64` separately.

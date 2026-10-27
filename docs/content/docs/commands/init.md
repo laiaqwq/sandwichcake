@@ -3,11 +3,12 @@ title: init
 weight: 13
 ---
 
-`sandwichcake init [dir]` creates a project (default: current directory):
+`sandwichcake init [dir]` creates a project (default: current directory)
+and prints the absolute config path:
 
 ```sh
 sandwichcake init my-project
-# created my-project/cake-config.yaml
+# created /abs/path/my-project/cake-config.yaml
 ```
 
 This creates `cake/` for multiple `<name>.yaml` files and appends
@@ -32,9 +33,16 @@ To create the optional **user-wide** environment defaults file, run
 See [config](config.md) for project and global settings. Registry credentials
 stay in the Docker credential chain, not in either configuration file.
 
-If you previously stored `toPrefix`, `tagFormat`, `roots`, or `cacheDir` in
-the global config, use `sandwichcake init my-project --migrate` instead.
-It moves output settings into the new project and rewrites the user file
-with environment-only settings; it refuses to overwrite an existing
-project config. Check the resulting weight repository/tag names: the
-new project naming scheme uses `registry.repos.weight`.
+If the global config still contains legacy `toPrefix`, `tagFormat`,
+`roots`, or `cacheDir` keys, plain `sandwichcake init` **fails** — the
+global config is parsed before scaffolding and the error points at
+`sandwichcake init my-project --migrate`, which exists for exactly this
+case. It moves output settings into the new project, rewrites the user
+file with environment-only settings, and prints `migrated output
+settings from <path>`; with no legacy keys it behaves like plain init.
+It refuses to overwrite an existing project config. Legacy values are
+validated first — each `roots.<type>` must be a valid pack type with an
+absolute path and `tagFormat` may only use `{name}`/`{type}`/`{rev}` —
+and a failure aborts the migration. Check the resulting weight
+repository/tag names: the new project naming scheme uses
+`registry.repos.weight`.

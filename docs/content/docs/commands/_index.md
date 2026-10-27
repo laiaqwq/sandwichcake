@@ -9,7 +9,7 @@ Available on every command:
 
 | Flag | Description |
 |------|-------------|
-| `--cache-dir` | Metadata cache directory; overrides `SANDWICHCAKE_CACHE_DIR` and `cache.dir` (default `~/.cache/sandwichcake`) |
+| `--cache-dir` | Metadata cache directory; overrides `SANDWICHCAKE_CACHE_DIR` and `cache.dir` (default `$XDG_CACHE_HOME/sandwichcake`, else `~/.cache/sandwichcake`, else the OS temp dir) |
 | `--project` | Project directory (otherwise discover `cake-config.yaml` upwards from cwd) |
 | `--registry-prefix` | Override `registry.prefix` from `cake-config.yaml` for this invocation (requires a project; other naming rules still apply). `compose --locked` fails if it would expand refs differently from the lock |
 | `--insecure-registry` | Registry host to access over plain HTTP (repeatable). When set, **all** registry traffic in that invocation is treated as insecure |

@@ -30,10 +30,23 @@ Packs a Python virtualenv.
 | `--lock` | – | Path to a lock file (`uv.lock`, `poetry.lock`, `requirements.txt`) attached as slice metadata |
 | `--from-lock` | – | Build the venv from a lock file using local `uv`; requires `--python <version>` |
 
+Pack-time validation requires `pyvenv.cfg`, `bin/python` and
+`lib/python3.X/site-packages`; `embedded` mode additionally requires a
+`.python/` interpreter tree whose `pyvenv.cfg` `home` equals
+`<root>/.python/bin` (fix with `--rewrite-prefix`). `.python/` always
+packs into its own layer.
+
 At pack time the venv is scanned for ELF binaries; the maximum
-`glibc>=X.Y` requirement (or musl) is recorded in the slice annotations
-and checked against the base image at compose time (see
-[libc resolution](cake-yaml.md#libc)).
+`glibc>=X.Y` requirement is recorded in the slice annotations and
+checked against the base image at compose time (see
+[libc resolution](cake-yaml.md#libc)). musl-linked ELFs only record
+`venv.libc=musl` informationally; nothing checks it.
+
+Detected architecture is recorded as `venv.arch` and feeds `--platform`
+auto-detection (`linux/<arch>` when unset, error on conflict). A
+`requirements.freeze.txt` metadata file is generated from
+`*.dist-info/METADATA`. Composing a `python.mode=system` venv warns that
+`python.home` cannot be verified against the base.
 
 `--from-lock` resolves and installs the environment locally with `uv`
 (you need `uv` on `PATH` and network access to the package index), then
@@ -56,26 +69,33 @@ instead of `--to`, the target ref is derived automatically from
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--source` | – | Provenance URI (`hf://org/name@rev`, `https://…`, `s3://…`) recorded in annotations and used for auto-naming |
+| `--source` | – | Provenance URI (`hf://org/name@rev`, `https://…`, `s3://…`) recorded in annotations; auto-naming is `hf://`-only (other sources fall back to `<prefix>/weight:<name>`) |
 | `--source-commit` | – | Resolved upstream commit, recorded as `…weight.source.commit` (set automatically for remote sources) |
 | `--include`, `--exclude`, `--keep-dir` | – | Remote sources only, see [Remote models](commands/pack.md#remote-models) |
 
-Instead of a directory, `pack weight` accepts `hf://`, `modelscope://`
-or `https://` sources and streams the model straight into the registry
-([Remote models](commands/pack.md#remote-models)).
+Instead of a directory, `pack weight` accepts `hf://`, `modelscope://`,
+`https://` or `http://` sources and streams the model straight into the
+registry ([Remote models](commands/pack.md#remote-models)).
 
 Weight layers default to no compression: quantized tensors do not
 compress, so skipping gzip saves the pack time entirely
 (`--compression` still overrides).
+
+Every weight slice carries a `files.json` manifest (path, size, sha256
+per file) whose digest is recorded as `weight.files.digest`, and the
+dominant tensor extension in `weight.format`; a root `config.json` or
+`model_index.json` is attached as a metadata file.
 
 ## binary
 
 Packs a directory of compiled binaries/libraries. The embedded ELF
 scanner extracts architecture, interpreter and the maximum `glibc>=X.Y`
 requirement at pack time; mixed architectures in one directory are
-rejected. `compose` reports an error when a `glibc` requirement meets a
-musl base, and a warning when the base libc cannot be verified (see
-[libc resolution](cake-yaml.md#libc)).
+rejected. `compose` reports an error when the slice's `binary.arch`
+mismatches the target platform or a `glibc` requirement meets a musl
+base, and a warning when the base libc cannot be verified (see
+[libc resolution](cake-yaml.md#libc)). musl-linked ELFs produce no
+`layer.requires`; the scan records musl only via `binary.elf.interp`.
 
 ## patch
 
@@ -83,7 +103,7 @@ Packs a file-level patch to overlay onto a base image.
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--base` | – | Expected base `repo@digest` this patch applies to |
+| `--base` | – | Expected base `repo@digest` this patch applies to; enforced at compose — a mismatch with the actual base is an error |
 
 ## other
 
@@ -92,7 +112,9 @@ don't fit the specialized types.
 
 ## Writing your own type
 
-Types implement the `Type` interface in `pkg/types` (options, defaults,
-layout rules, annotations, metadata files, compose-time checks) and
-register via `types.Register`. The built-ins under `pkg/types/` are the
+Types implement the `Type` interface in `pkg/types` (`Name`, `Schema`,
+`Prepare`, options, defaults, layout rules, annotations, metadata
+files, compose-time checks) and register via `types.Register` in
+`init()` — a type must be compiled into the binary via blank import
+(see `pkg/types/builtin`). The built-ins under `pkg/types/` are the
 reference implementations.

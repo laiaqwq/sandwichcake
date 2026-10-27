@@ -102,6 +102,8 @@ Workflow details:
   metadata); the workflow rejects anything else before building.
 - `go vet ./...` and `go test -count=1 ./...` gate the build — a
   failing test means no assets are published.
+- Releases also get GitHub's auto-generated release notes on top of
+  the uploaded assets (`generate_release_notes: true`).
 - Tags with a `-` before any `+build` suffix (for example
   `v0.2.0-rc.1` or `v0.2.0-rc.1+build.3`) are marked as pre-releases on
   GitHub automatically; `+build` metadata alone does not make a

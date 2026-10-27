@@ -18,7 +18,8 @@ sandwichcake config get <key>
 sandwichcake config set <key> <value>
 sandwichcake config unset <key>
 sandwichcake config pull [oci://registry/repo:tag | git+https://host/repo.git@main#subdir]
-sandwichcake config push [destination] [--new-branch branch]
+sandwichcake config push oci://registry/repo:tag [--force]
+sandwichcake config push git+https://host/repo.git@branch#subdir [--new-branch branch]
 ```
 
 | Key for `get` / `set` / `unset` | YAML field | Effect |
@@ -35,7 +36,9 @@ sandwichcake config push [destination] [--new-branch branch]
 | `modelscope-endpoint` | `download.modelscope.endpoint` | ModelScope endpoint (default `https://www.modelscope.cn`) |
 
 `config set repos` takes comma-separated repository names; the YAML field
-is a list. `config unset` clears a value. Project output settings
+is a list. `config unset` clears a value. `config get` prints the
+effective merged value (local config and env vars may override it) while
+`set`/`unset` write only the global file. Project output settings
 (`registry`, `pack`, `models.paths`) are not accepted in the global or local
 config. Migrate existing `toPrefix`, `tagFormat`, `roots` and `cacheDir`
 with `sandwichcake init <dir> --migrate`, or move them by hand into
@@ -98,9 +101,10 @@ models:
 ```
 
 `pack` auto-names as `<prefix>/<repo>:<name>` when `--to` is absent.
-For HF sources, `{name}` is `org--model` (to avoid collisions) and `{rev}`
-is the source revision. `{name}` is lowercased inside the repository path
-(OCI repository names are lowercase); characters a tag cannot hold (e.g.
+For `hf://` and `modelscope://` sources, `{name}` is `org--model` (to
+avoid collisions) and `{rev}` is the source revision. `{name}` is
+lowercased inside the repository path (OCI repository names are
+lowercase); characters a tag cannot hold (e.g.
 the `/` of `refs/pr/1`) become `-`. `--to-prefix` explicitly overrides the
 project prefix and uses the legacy type naming; the global
 `--registry-prefix` replaces only `registry.prefix` and keeps
@@ -133,36 +137,56 @@ digests even if the project prefix changes later.
 
 `cake-config.local.yaml` (gitignored) may contain only `cache`,
 `upload`, `download`, and the `repos` list used by `ls`. Relative
-`cache.dir` is resolved against the project directory. Precedence: CLI
+`cache.dir` resolves against its config file's directory and `~`
+expands to the home directory. Precedence: CLI
 flags > `SANDWICHCAKE_CACHE_DIR` / `SANDWICHCAKE_UPLOAD_CONCURRENCY` /
 `SANDWICHCAKE_UPLOAD_RETRIES` / `SANDWICHCAKE_DOWNLOAD_CONCURRENCY` /
 `SANDWICHCAKE_DOWNLOAD_RETRIES` / `HF_ENDPOINT` / `MODELSCOPE_DOMAIN` >
-local config > user config > built-ins. For project output fields the
+local config > user config > built-ins. A `MODELSCOPE_DOMAIN` without
+a scheme gets `https://` prepended. For project output fields the
 global `--registry-prefix` flag overrides `registry.prefix`.
 `config show --origin` reports the source of configured values. Registry
 credentials use the Docker credential chain; model tokens come from
-`HF_TOKEN` (or the `huggingface-cli login` token file),
-`MODELSCOPE_API_TOKEN` and `~/.netrc` — never from these files.
+`HF_TOKEN`/`HUGGING_FACE_HUB_TOKEN` or the `huggingface-cli login`
+token file (`$HF_TOKEN_PATH`, else `$HF_HOME/token` or
+`~/.cache/huggingface/token`),
+`MODELSCOPE_API_TOKEN`, and `$NETRC`/`~/.netrc` for other hosts —
+never from these files.
 
 ## Pull and push
 
 Both commands sync the entire project, including all `cake/*.yaml` and
 `cake/*.lock`. They exclude `.git/`, `.cake/`, `cake-config.local.yaml`,
-`*.env`, and `.cakeignore` patterns; symlinks are refused. `from` supplies
-the default remote address. A configured cache directory inside the project
-is also excluded. Use `--project <dir>` to pull into a new directory, or
-pull into a project made by `init`. Local modifications are
-never overwritten unless `config pull --force`; a pull prints changed
-file names before writing and records versions/hashes in `.cake/state.json`.
+any `*.env` path component (file or directory), and `.cakeignore`
+patterns — full gitignore syntax (`*`, `?`, `**`, `[]`, `/` anchors,
+ordered `!` negations, `#` comments, trailing-`/` directory rules).
+Symlinks and other non-regular files (FIFOs, sockets) are refused.
+`from` supplies the default remote address. A configured cache
+directory inside the project is also excluded. Pull requires the
+incoming remote to carry a valid `cake-config.yaml`; push validates
+the local project the same way. Use `--project <dir>` to
+pull into a new directory, or pull into a project made by `init`. Local
+modifications are never overwritten unless `config pull --force`; a
+pull prints changed file names before writing and records the source,
+version and per-file hashes in `.cake/state.json`. Pulling from a
+different source than recorded is refused ("source changed from X; use
+--force") without `--force`.
 
 For OCI, use `oci://registry/repo:tag`. The project is stored as an OCI
-artifact with per-file layers. Push refuses a changed remote tag unless
-`--force` (optimistic check, not a registry-side atomic compare-and-swap).
+artifact with per-file layers. Push is allowed only to an empty tag, or
+to the recorded `oci://` address whose remote digest still matches the
+recorded pull; anything else — a changed remote tag, a different
+destination than was pulled, an existing tag with no pull history —
+needs `--force` (optimistic check, not a registry-side atomic
+compare-and-swap).
 
 For git, use `git+https://host/repo.git@branch#subdir` or `git+ssh://...`.
 A **nonempty subdirectory** is required; the tool uses a cached clone and
 requires system `git`, but the project directory need not be a checkout.
 Pull before pushing; `config push` updates the existing branch if its head
-has not changed. `config push --new-branch feature/name` instead commits
-from the previously pulled revision to a new branch. Neither mode merges
-nor force-pushes. Configure your git commit identity beforehand.
+has not changed and propagates deletions of previously synced files.
+`config push --new-branch feature/name` instead commits from the
+previously pulled revision to a new branch that must not already exist
+on origin. Neither mode merges nor force-pushes; `--new-branch` is
+git-only and `--force` is rejected for git pushes. Configure your git
+commit identity beforehand.

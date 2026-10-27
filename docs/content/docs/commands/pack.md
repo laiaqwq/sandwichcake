@@ -15,25 +15,26 @@ URL straight into the registry — see [Remote models](#remote-models).
 2. **Prepare** — the type's prepare hook runs. Types that need to modify
    content work on a private temp copy (your directory is never touched).
    For `venv --from-lock` the venv is built here from the lock file with
-   local `uv`.
+   local `uv`; `venv` also rewrites path strings inside file contents
+   per `--rewrite-prefix` (tar entry names are never rewritten).
 3. **Split** — entries are grouped into layers by the type's layout
    rules plus `--small-threshold` / `--large-threshold`, unless
    `--no-split`.
 4. **Build** — deterministic tars are built in parallel: timestamps
    come from `SOURCE_DATE_EPOCH` (else Unix 0), ownership/modes are
-   normalized per `--owner` / `--chmod` / `--no-parents`, path prefixes
-   are rewritten per `--rewrite-prefix`, then each layer is compressed
-   (`gzip` / `zstd` / `none`, per-type default).
+   normalized per `--owner` / `--chmod` / `--no-parents`, then each
+   layer is compressed (`gzip` / `zstd` / `none`, per-type default).
 5. **Annotate** — every layer descriptor gets
    `com.github.baba.sandwichcake.*` annotations (type, schema, root,
    name, part, file count, tool version, type-specific keys).
 6. **Push** — the image manifest goes to `--to` (or merges into the
-   existing index with `--merge`), then a metadata artifact is pushed
-   with the manifest as `subject` — an OCI 1.1 referrer where supported,
-   else the `sha256-<digest>` fallback index (`--artifact-compat` forces
-   the fallback).
+   existing index with `--merge`). If the type produces metadata files
+   (`venv` and `weight` do; `binary`, `patch` and `other` do not), a
+   metadata artifact is pushed with the manifest as `subject` — an OCI
+   1.1 referrer where supported, else the `sha256-<digest>` fallback
+   index (`--artifact-compat` forces the fallback).
 7. **Print** — the pushed ref, manifest digest, and metadata artifact
-   ref.
+   ref when pushed.
 
 Nothing is pushed with `--dry-run`; layers are built under a temp dir
 and discarded.
@@ -44,8 +45,9 @@ and discarded.
 sandwichcake pack <type> <dir> --root <path> [flags]
 ```
 
-`--root` is required unless `pack.<type>.root` or a model path template
-is set in the project's `cake-config.yaml`. `--to` sets a full target;
+`--root` is required unless `pack.defaults.root`, `pack.<type>.root` or
+a model path template is set in the project's `cake-config.yaml`.
+`--to` sets a full target;
 `--to-prefix` explicitly enables legacy prefix auto-naming. When a
 project config sets `registry.prefix`, `registry.repos`, and optional
 `registry.repoFormat`/`registry.tagFormat`, they determine automatic
@@ -56,18 +58,18 @@ targets. Explicit flags take precedence. See [`config`](config.md).
 | Flag | Description |
 |------|-------------|
 | `--root` | Container root path (e.g. `/opt/venv`); required unless a project root or model path is configured |
-| `--to` | Target `repo:tag`; overrides saved auto-naming |
+| `--to` | Target `repo:tag` or `repo@digest`; overrides saved auto-naming |
 | `--to-prefix` | `registry/repo` prefix for auto-naming (overrides project `registry.prefix`) |
 | `--compression` | `gzip` \| `zstd` \| `none` (per-type default) |
 | `--level` | Compression level |
 | `--no-split` | Disable automatic layer splitting |
 | `--large-threshold` | Large-file threshold (default `5Gi`) |
 | `--small-threshold` | Small-file threshold (default `64Mi`) |
-| `--platform` | `linux/amd64` \| `any`; auto-detected from ELF arch where the type scans it — a conflicting explicit value is an error |
-| `--rewrite-prefix` | `src=dst` path prefix rewrite (repeatable) |
+| `--platform` | any `os/arch` (e.g. `linux/amd64`) or `any`; auto-detected from ELF arch where the type scans it — a conflicting explicit value is an error |
+| `--rewrite-prefix` | `src=dst` rewrite of path strings inside file contents; `venv` only (repeatable) |
 | `--owner` | `uid:gid` for all layer files |
 | `--chmod` | `fileMode:dirMode` octal, e.g. `644:755` |
-| `--no-parents` | Do not write ancestor directory entries |
+| `--no-parents` | Skip ancestor directory entries above `--root` (ancestors under it are always written) |
 | `--artifact-compat` | Force fallback-index metadata + standard image config type |
 | `--merge` | Merge the manifest into an existing index at the target tag |
 | `--dry-run` | Build locally, do not push |
@@ -89,8 +91,9 @@ sandwichcake pack weight <source> [--include glob]... [--exclude glob]... [--kee
 | `hf://org/name[@rev]` | Whole Hugging Face model (default rev `main`) |
 | `https://huggingface.co/org/name[/tree/<rev>[/<dir>]]` | Same; `/tree/<rev>/<dir>` keeps only that subdirectory (paths stay repo-relative) |
 | `https://huggingface.co/org/name/blob/<rev>/<file>` (or `/resolve/`) | One file |
-| `modelscope://org/name[@rev]`, `https://modelscope.cn/models/org/name[/files][?Revision=<rev>]` | ModelScope model (default rev `master`) |
-| any other `https://…/file[#sha256=<hex>]` | One file; the optional fragment is verified |
+| `modelscope://org/name[@rev]`, `https://modelscope.cn/models/org/name[/files|/summary][?Revision=<rev>]` | ModelScope model (default rev `master`) |
+| `https://modelscope.cn/models/org/name/resolve/<rev>/<file>` | One ModelScope file |
+| any other `http(s)://…/file[#sha256=<hex>]` | One file; the optional fragment is verified |
 
 URLs on the configured mirror host (`download.hf.endpoint`, e.g.
 `https://hf-mirror.com`) are recognized as Hugging Face URLs. Only models
@@ -125,8 +128,8 @@ computed on the fly. Nothing is staged on disk except small non-LFS files
 - **`--keep-dir <dir>`** also writes the verified files to `<dir>`.
   Packing that directory locally (named like the model, with the same
   `--source` and `--source-commit`) reproduces the same digests.
-- **`--dry-run`** lists the files and prints the layer plan without
-  downloading content.
+- **`--dry-run`** prints the per-layer plan (name, bytes, entry count)
+  without downloading content.
 
 Example:
 
@@ -134,7 +137,7 @@ Example:
 $ export HF_TOKEN=hf_…            # gated/private models only
 $ sandwichcake pack weight https://huggingface.co/Qwen/Qwen3-8B/tree/main \
     --exclude 'original/**' --to registry.example.com/ai/weights/qwen--qwen3-8b:main
-layer 1/6: streaming model-00001-of-00005.safetensors (3995 MB uncompressed)
+layer 1/6: streaming model-00001-of-00005.safetensors (4189112320 bytes uncompressed)
 …
 pushed registry.example.com/ai/weights/qwen--qwen3-8b:main
 ```
@@ -153,10 +156,11 @@ $ sandwichcake pack weight ./models/qwen3-8b \
     --source hf://Qwen/Qwen3-8B@main
 pushed registry.example.com/ai/weights:qwen3-8b
   digest sha256:3a1f…
-  metadata sha256:77e2…
+  metadata registry.example.com/ai/weights@sha256:77e2…
 ```
 
-Same thing with auto-naming (Namer derives the ref from `--source`):
+Same thing with auto-naming (Namer derives the ref from `--source`;
+`hf://` sources only — `modelscope://` falls back to `prefix/weight:<name>`):
 
 ```sh
 sandwichcake pack weight ./models/qwen3-8b \

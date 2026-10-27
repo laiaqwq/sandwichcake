@@ -12,30 +12,30 @@ kind: Cake                       # required
 
 target:
   ref: registry.example.com/app:v1        # required
-  platforms: [linux/amd64]                # optional
+  platforms: [linux/amd64]                # optional; default: the base's platforms
   annotations: {}                         # optional extra manifest annotations
 
 base:                            # required; a normal image ref
   ref: python:3.12-slim
-  platform: linux/amd64          # optional: pick from an index
+  platform: linux/amd64          # optional: pick from an index, or "any"
   verify: true                   # optional: download + scan base layers
   libc: "glibc 2.35"             # optional: declared base libc (see below)
-  name: debian-slim              # optional display name
+  name: debian-slim              # optional informational label
 
 slices:                          # optional list, applied in order
-  - ref: registry.example.com/ai/venv:torch-2.8
+  - ref: registry.example.com/ai/venv:torch-2.8   # packed slice or plain image
     platform: linux/amd64        # optional: "linux/amd64" or "any"
-    layers: [0, "sha256:…"]      # optional: subset by index or digest
+    layers: [0, "sha256:…"]      # index or digest; required for a plain image
     verify: true                 # optional: verify layers at resolve
-    force: true                  # optional: skip compose-time checks
-    name: torch                  # optional display name
+    force: true                  # optional: skip the pure-file check on plain-image layers
+    name: torch                  # optional informational label
 
 config:                          # optional OCI config patch
   env:
     KEY: value                   # set env var
-    PATH: {prepend: /opt/venv/bin}   # or prepend/append to base value
-  entrypoint: ["python", "serve.py"]
-  cmd: ["--port", "8080"]
+    PATH: {prepend: /opt/venv/bin}   # or prepend/append, ":"-joined
+  entrypoint: ["python", "serve.py"]   # [] clears the base value
+  cmd: ["--port", "8080"]            # [] likewise
   workdir: /app
   user: "1000"
   labels:
@@ -44,11 +44,34 @@ config:                          # optional OCI config patch
 
 ## Field rules
 
-- `target.ref`, `base.ref` and each `slices[].ref` are required.
+- `target.ref`, `base.ref` and each `slices[].ref` are required. A ref may
+  also use `<type>:<tag>` shorthand (`venv:torch-2.8`, `image:serve`),
+  expanded via `registry.prefix`/`repos` — see [config](commands/config.md);
+  ordinary refs like `python:3.12-slim` pass through unchanged.
+- `target.platforms` defaults to the base's platforms (index entries,
+  else the base config's os/arch). One platform emits a single manifest,
+  more than one an OCI index.
+- Managed keys `com.github.baba.sandwichcake.slices`,
+  `org.opencontainers.image.base.name` and
+  `org.opencontainers.image.base.digest` override `target.annotations`.
 - `base` does not allow `layers` or `force` — it is consumed whole.
 - `libc` is only valid on `base`, not on slices.
+- A `slices[]` ref may name a packed slice or a plain image; on a plain
+  image `layers` is required ("is not a slice; select layers explicitly").
+  Entries are layer indexes or full `sha256:<hex>` digests.
+- `platform` accepts any `os/arch` plus `any` (platform-independent
+  manifest).
+- `force` skips only the pure-file check when selecting layers from a
+  plain image (COPY/ADD history judgment); every other check still runs.
+- `verify` downloads each selected layer and scans its tar, rejecting
+  `.wh.*` whiteout entries.
+- `name` is informational: stored in the lock and restored by `--locked`,
+  never displayed or consumed.
 - `config.env` values are either a scalar (`KEY: value`, replace/set) or
-  a mapping with exactly `prepend` / `append` applied to the base env.
+  a mapping with exactly `prepend` / `append` joined to the base value
+  with `:`; unknown keys are rejected and `env: {}` is a no-op.
+- `cmd: []` / `entrypoint: []` explicitly clears the base value.
+- Duplicate layers are deduped by diff_id (first wins).
 
 ## libc resolution {#libc}
 
@@ -66,25 +89,43 @@ Slices packed by `binary`/`venv` may declare a `glibc>=X.Y` requirement.
 
 ## cake.lock {#cakelock}
 
-`compose` writes `cake.lock` (`kind: CakeLock`) next to `cake.yaml`.
-Every ref is pinned to the digest it resolved to, with the selected
-manifest and full layer digest list per platform:
+After a successful push — never on `--dry-run`/`plan` — `compose` writes
+a lock file (`kind: CakeLock`) next to the cake file: `cake.lock` for
+`cake.yaml`, otherwise `<name>.lock` (`compose serve` →
+`cake/serve.lock`). `target.ref` keeps the tag, `target.digest` the
+pushed manifest/index digest, `target.platforms` the built platforms.
+Each base/slice `ref` is pinned to `repo@digest`, with `input` holding
+the original tag ref (keeps `org.opencontainers.image.base.name`
+stable). Also echoed per ref: `platform`, `layers`, `force`, `verify`,
+`name` (`libc` on base) and the `config` patch;
+`resolved.<platform-or-"any">` records the selected `manifest` and full
+`layers` digest list:
 
 ```yaml
 apiVersion: sandwichcake.io/v1
 kind: CakeLock
 target:
-  ref: registry.example.com/app:v1
+  ref: registry.example.com/app:v1   # tag kept
   digest: sha256:…            # final pushed manifest/index digest
+  platforms: [linux/amd64]
 base:
-  ref: python@sha256:…        # resolved
-  input: python:3.12-slim     # original tag, keeps base.name stable
+  ref: python@sha256:…        # resolved repo@digest
+  input: python:3.12-slim     # original tag ref
   resolved:
-    linux/amd64:
+    linux/amd64:              # or "any"
       manifest: sha256:…
       layers: [sha256:…, …]
+slices:
+  - ref: registry.example.com/ai/venv@sha256:…
+    input: registry.example.com/ai/venv:torch-2.8
+    layers: [0]               # original selection echoed
+    resolved:
+      any:
+        manifest: sha256:…
+        layers: [sha256:…]
 ```
 
 `sandwichcake compose --locked` replays the lock without resolving any
-tags, reproducing the same manifest digest. Commit `cake.lock` to make
-builds fully reproducible.
+tags, reproducing the same manifest digest. Only `kind` is validated
+when a lock is loaded; the written `apiVersion` is not checked. Commit
+the lock file to make builds fully reproducible.

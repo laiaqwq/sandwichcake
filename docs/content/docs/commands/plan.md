@@ -3,10 +3,14 @@ title: plan
 weight: 3
 ---
 
-`sandwichcake plan -f cake.yaml` is `compose --dry-run` with the
-transfer plan always rendered. It performs the full resolve → check →
-compose → classify pipeline but **never pushes anything** and never
-writes `cake.lock`.
+`sandwichcake plan -f cake.yaml` runs the same pipeline as
+`compose --dry-run` — resolve → check → compose → classify — and
+always renders the transfer plan. It **never pushes anything** and
+never writes `cake.lock`. Unlike `compose --dry-run` it prints only
+the plan: `warn:` findings are dropped silently and there is no
+`dry-run complete` marker. There is no `--locked` — `plan` never
+reads `cake.lock` and always resolves tags fresh, so its output can
+drift from a locked compose.
 
 ## What it shows
 
@@ -36,7 +40,7 @@ Plan: 28.4MiB reuse (2 layers), 410.0MiB mount (1 layers), 4.9GiB copy (1 layers
 
 | Flag | Description |
 |------|-------------|
-| `-f`, `--file` | cake.yaml path (default `./cake.yaml`); or pass a project cake name, e.g. `plan serve` |
+| `-f`, `--file` | cake.yaml path (default `./cake.yaml`). A positional arg also works: a project cake name (`plan serve`), or any arg containing `/` or ending `.yaml` as a path (`plan ./dir/foo.yaml`). `-f` + arg together is an error |
 | `--verify` | Download layer tars and scan headers during resolve (libc detection, overlay validation) |
 
 ## Examples
@@ -60,3 +64,9 @@ sandwichcake plan -f cake.yaml --verify
 - A slice that classifies `copy` in `plan` may still be cheap to push:
   chunked uploads resume, and identical blobs across slice refs are
   deduplicated before classification.
+- `mount` is best-effort: a blob classified `~` may still fall back to
+  chunked upload at push time if the registry rejects the mount.
+- Plan lines are sorted by digest, not layer order. `-v` is a no-op —
+  `plan` always renders anyway.
+- A per-slice `verify: true` in cake.yaml triggers the same scan as
+  `--verify` (they union), so plan output reflects it.

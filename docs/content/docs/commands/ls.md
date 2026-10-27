@@ -24,7 +24,10 @@ registry.example.com/ai/venv:torch-2.8
 
 With **no arguments**, `ls` reads default repos from
 `$XDG_CONFIG_HOME/sandwichcake/config.yaml`
-(usually `~/.config/sandwichcake/config.yaml`):
+(usually `~/.config/sandwichcake/config.yaml`). Inside a project — the
+nearest `cake-config.yaml` walking up from cwd, or `--project <dir>` —
+`<project>/cake-config.local.yaml` is also read, and its `repos:` list
+**overrides** the global one rather than merging.
 
 ```yaml
 repos:
@@ -48,6 +51,16 @@ sandwichcake ls reg/ai/venv reg/ai/weights        # several
 
 ## Notes
 
-- Tags pointing at indexes or non-slice manifests are skipped silently.
+- The global flags apply: `--project <dir>` selects the project whose
+  `cake-config.local.yaml` supplies `repos`, and `--insecure-registry`
+  permits plain-HTTP registry access.
+- Per-tag failures are skipped silently: fetch errors (404, auth,
+  network mid-list), manifest parse errors, and tags pointing at
+  indexes or non-slice manifests.
+- Only top-level tag manifests are inspected — a slice reachable only
+  through an index tag is never reported.
+- If the tag list itself cannot be fetched for a repo, the command
+  aborts with `<repo>: <error>`: output already printed stays, later
+  repos are never processed.
 - One line per `repo:tag` — pipe to `xargs sandwichcake inspect` for a
   quick inventory.
