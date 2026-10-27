@@ -3,7 +3,7 @@
 OCI image composition tool: packs local directories into **slices**
 (OCI image manifests carrying annotated, typed layers) and composes
 existing registry content into new images — no Dockerfiles, no build
-daemon. See the [cake.yaml reference](docs/content/docs/cake-yaml.md) and
+daemon. See the [cake.yaml reference](docs/content/docs/general/reference/cake-yaml.md) and
 the [documentation site](https://sandwichcake.laiqwq.com/) for details.
 
 ## Install
@@ -18,7 +18,7 @@ for:
 
 Each archive contains a single `sandwichcake` executable plus a
 `checksums.txt` — see the
-[releases doc](docs/content/docs/releases.md) for verification and
+[installation guide](docs/content/docs/getting-started/installation.md) for verification and
 install steps.
 
 From source — requires Go as declared in [go.mod](go.mod) (currently
@@ -58,12 +58,12 @@ For multi-image projects, `sandwichcake init my-project` creates
 defaults in the project config, add `cake/<name>.yaml`, then run
 `sandwichcake compose <name>`. `sandwichcake config pull/push` syncs the
 whole project via an `oci://` or `git+https://...@branch#subdir` source.
-See the [config guide](docs/content/docs/commands/config.md) for details.
+See [Projects](docs/content/docs/general/concepts/projects.md) and the
+[`config` reference](docs/content/docs/cli/config.md) for details.
 
-See [docs/content/docs/getting-started.md](docs/content/docs/getting-started.md)
-for a full walkthrough and
-[docs/content/docs/commands/](docs/content/docs/commands/) for the CLI
-reference.
+See the [Quickstart](docs/content/docs/getting-started/quickstart.md)
+for a full walkthrough and the
+[CLI reference](docs/content/docs/cli/_index.md) for every command.
 
 ## Platform notes
 
@@ -79,5 +79,8 @@ the venv will not run in a Linux image.
 go build ./... && go vet ./... && go test ./...
 ```
 
-See [docs/content/docs/testing.md](docs/content/docs/testing.md) for
-the full verification matrix, offline mode, and the release checklist.
+See the [Developer Guide](docs/content/docs/developer-guide/_index.md) —
+[Testing](docs/content/docs/developer-guide/testing.md) for the full
+verification matrix and offline mode,
+[Releasing](docs/content/docs/developer-guide/releasing.md) for the
+release checklist.

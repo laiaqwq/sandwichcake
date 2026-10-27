@@ -269,5 +269,16 @@ deployment is planned but the workflow is not yet committed
 - GitHub Pages: repo Settings -> Pages -> Source = GitHub Actions.
   CI overrides baseURL via configure-pages output; the `baseURL` in
   docs/hugo.toml assumes the project page `baba.github.io/sandwichcake/`.
-- Sidebar order = `weight` in frontmatter; each commands/ child page
-  has its own weight.
+- Sidebar order = `weight` in frontmatter; each section `_index.md`
+  sets the section position.
+- Content tree (docs/content/docs/): `getting-started/` (installation,
+  quickstart, examples — examples are TODO), `general/concepts/`,
+  `general/reference/`, `cli/` (one page per command; `cli/pack/<type>.md`
+  per pack type; all `config` subcommands share `cli/config.md` with one
+  H2 each), `developer-guide/`. Moved pages keep old URLs via
+  frontmatter `aliases:`.
+- CLI pages follow Synopsis → Arguments → Flags → What happens → Output
+  → Examples → Notes. `TestCLIDocs` (cmd/sandwichcake/docs_test.go)
+  fails if a cobra command lacks a page, its command path, or any flag
+  mention (pack common flags may live in `cli/pack/_index.md`; global
+  flags in `cli/_index.md`) — update docs with every new command/flag.
