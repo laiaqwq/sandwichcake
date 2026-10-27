@@ -32,9 +32,15 @@ func initProject(cmd *cobra.Command, dir string) error {
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
+	// Normalize a missing trailing newline so an entry on the last line
+	// still matches the \n<entry>\n check below.
+	existing := string(data)
+	if existing != "" && !strings.HasSuffix(existing, "\n") {
+		existing += "\n"
+	}
 	add := ""
 	for _, entry := range []string{"cake-config.local.yaml", ".cake/"} {
-		if !strings.Contains("\n"+string(data)+add, "\n"+entry+"\n") {
+		if !strings.Contains("\n"+existing+add, "\n"+entry+"\n") {
 			add += entry + "\n"
 		}
 	}

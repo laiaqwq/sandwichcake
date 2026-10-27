@@ -34,7 +34,7 @@ func newRoot() *cobra.Command {
 		Use:   name,
 		Short: "sandwichcake: OCI image composition tool",
 	}
-	root.PersistentFlags().StringArrayVar(&insecureHosts, "insecure-registry", nil, "registry host to access over plain HTTP (repeatable)")
+	root.PersistentFlags().StringArrayVar(&insecureHosts, "insecure-registry", nil, "access registries over plain HTTP (global switch: any non-empty value marks all registries insecure; the value is ignored; repeatable)")
 	root.PersistentFlags().StringVar(&cacheDir, "cache-dir", "", "metadata cache dir (default ~/.cache/sandwichcake)")
 	root.PersistentFlags().StringVar(&projectDir, "project", "", "project directory (default: discover from cwd)")
 	root.PersistentFlags().StringVar(&registryPrefix, "registry-prefix", "", "override registry.prefix from cake-config.yaml")

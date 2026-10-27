@@ -244,8 +244,8 @@ func rmCmd() *cobra.Command {
 					rm := srcRef.Context().Digest(rd.Digest.String())
 					if err := c.Delete(ctx, rm.String()); err == nil {
 						fmt.Fprintf(w, "deleted referrer %s\n", rd.Digest)
+						c.RemoveReferrer(ctx, digestRef, rd.Digest)
 					}
-					c.RemoveReferrer(ctx, digestRef, rd.Digest)
 				}
 			}
 			desc, err := c.Get(ctx, args[0])

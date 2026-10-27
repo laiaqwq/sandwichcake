@@ -253,7 +253,7 @@ func Resolve(ctx context.Context, client *registry.Client, ref cake.Ref, role Ro
 				rl.PureFile, rl.PureReason = pureFile(rl.History.CreatedBy)
 			}
 			if !rl.PureFile && !ref.Force {
-				return nil, fmt.Errorf("resolve: layer %d of %s is not a pure file layer (history: %q); use force: true or verify: true",
+				return nil, fmt.Errorf("resolve: layer %d of %s is not a pure file layer (history: %q); use force: true",
 					i, ref.Ref, histLine(rl.History))
 			}
 			// source annotations (DESIGN 2.3).
