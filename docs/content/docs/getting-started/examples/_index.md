@@ -3,14 +3,16 @@ title: Examples
 weight: 3
 ---
 
-{{< callout type="info" >}}
-**TODO** — end-to-end examples are coming.
-{{< /callout >}}
+## End-to-end examples
 
-Until then, see the [Quickstart](../quickstart.md) and the examples on
-each [CLI Reference](../../cli/_index.md) page.
+- [Compose two ModelScope models onto a vLLM base](modelscope-vllm.md) —
+  stream complete model weights into separate slices, plan the transfer
+  and compose an inference image.
 
-Planned scenarios:
+For a shorter walkthrough, see the [Quickstart](../quickstart.md) or
+the examples on each [CLI Reference](../../cli/_index.md) page.
+
+More scenarios planned:
 
 - An LLM inference image: Python base + venv built from `uv.lock` +
   weights streamed from `hf://`, in project mode.
