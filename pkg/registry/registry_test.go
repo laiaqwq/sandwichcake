@@ -159,6 +159,85 @@ func TestChunkedUploadResume(t *testing.T) {
 	}
 }
 
+func TestBlobExistsRedirect(t *testing.T) {
+	status := http.StatusTemporaryRedirect
+	redirects := 0
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v2/" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if r.Method != http.MethodHead || !strings.Contains(r.URL.Path, "/blobs/sha256:") {
+			redirects++
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Location", "/must-not-follow")
+		w.WriteHeader(status)
+	}))
+	t.Cleanup(s.Close)
+	c := testClient(s, http.DefaultTransport, DefaultChunkSize)
+	repo, err := name.NewRepository(repoURL(s, "a/b"), name.Insecure)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := v1.Hash{Algorithm: "sha256", Hex: strings.Repeat("a", 64)}
+	for _, tc := range []struct {
+		status int
+		exists bool
+		err    bool
+	}{
+		{http.StatusOK, true, false},
+		{http.StatusFound, true, false},
+		{http.StatusTemporaryRedirect, true, false},
+		{http.StatusNotFound, false, false},
+		{http.StatusInternalServerError, false, true},
+	} {
+		status = tc.status
+		got, err := c.BlobExists(context.Background(), repo, d)
+		if got != tc.exists || (err != nil) != tc.err {
+			t.Errorf("status %d: got (%v, %v), want (%v, error=%v)", tc.status, got, err, tc.exists, tc.err)
+		}
+	}
+	if redirects != 0 {
+		t.Fatalf("followed %d blob redirects", redirects)
+	}
+}
+
+func TestBlobRedirect(t *testing.T) {
+	downloads := 0
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		downloads++
+		if r.Header.Get("Authorization") != "" {
+			t.Error("registry credentials sent to blob storage")
+		}
+		io.WriteString(w, "metadata")
+	}))
+	t.Cleanup(target.Close)
+	status := http.StatusTemporaryRedirect
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v2/" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.Header().Set("Location", target.URL+"/file")
+		w.WriteHeader(status)
+	}))
+	t.Cleanup(source.Close)
+	c := testClient(source, http.DefaultTransport, DefaultChunkSize)
+	d := v1.Hash{Algorithm: "sha256", Hex: strings.Repeat("a", 64)}
+	for _, code := range []int{http.StatusFound, http.StatusTemporaryRedirect} {
+		status = code
+		data, err := c.Blob(context.Background(), repoURL(source, "a/b"), d)
+		if err != nil || string(data) != "metadata" {
+			t.Fatalf("status %d: data %q, error %v", code, data, err)
+		}
+	}
+	if downloads != 2 {
+		t.Fatalf("got %d blob storage requests, want 2", downloads)
+	}
+}
+
 func TestMountAcrossRepos(t *testing.T) {
 	s := testServer(t)
 	rec := &recorder{base: http.DefaultTransport}

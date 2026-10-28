@@ -155,7 +155,9 @@ func (c *Client) BlobExists(ctx context.Context, repo name.Repository, digest v1
 	}
 	defer resp.Body.Close()
 	io.Copy(io.Discard, resp.Body)
-	if resp.StatusCode == http.StatusOK {
+	// Registries may redirect blob reads to object storage. A redirect from
+	// the registry confirms the blob exists; following it could leak auth.
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusFound || resp.StatusCode == http.StatusTemporaryRedirect {
 		return true, nil
 	}
 	if resp.StatusCode == http.StatusNotFound {
@@ -182,6 +184,30 @@ func (c *Client) Blob(ctx context.Context, repo string, digest v1.Hash) ([]byte,
 	resp, err := tr.RoundTrip(req)
 	if err != nil {
 		return nil, err
+	}
+	if resp.StatusCode == http.StatusFound || resp.StatusCode == http.StatusTemporaryRedirect {
+		loc := resp.Header.Get("Location")
+		resp.Body.Close()
+		if loc == "" {
+			return nil, fmt.Errorf("registry: GET blob %s: redirect missing Location", digest)
+		}
+		next, err := req.URL.Parse(loc)
+		if err != nil {
+			return nil, err
+		}
+		if next.Scheme != "https" && (next.Scheme != "http" || req.URL.Scheme != "http") {
+			return nil, fmt.Errorf("registry: GET blob %s: insecure redirect", digest)
+		}
+		// Object storage URLs are pre-signed; never send registry credentials
+		// to the redirect target.
+		redirected, err := http.NewRequestWithContext(ctx, http.MethodGet, next.String(), nil)
+		if err != nil {
+			return nil, err
+		}
+		resp, err = (&http.Client{Transport: c.opts.Transport}).Do(redirected)
+		if err != nil {
+			return nil, err
+		}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
