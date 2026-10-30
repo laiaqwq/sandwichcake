@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="96 40 320 420" role="img" aria-label="sandwichcake">
+  <!-- isometric slab: top face, left face, right face -->
+  <g>
+    <path fill="#1d4ed8" d="M256 402 400 330v44l-144 72z"/>
+    <path fill="#3b82f6" d="M112 330l144 72v44l-144-72z"/>
+    <path fill="#93c5fd" d="M256 258l144 72-144 72-144-72z"/>
+  </g>
+  <g>
+    <path fill="#b45309" d="M256 344 400 272v44l-144 72z"/>
+    <path fill="#f59e0b" d="M112 272l144 72v44l-144-72z"/>
+    <path fill="#fde68a" d="M256 200l144 72-144 72-144-72z"/>
+  </g>
+  <g>
+    <path fill="#15803d" d="M256 286 400 214v44l-144 72z"/>
+    <path fill="#22c55e" d="M112 214l144 72v44l-144-72z"/>
+    <path fill="#86efac" d="M256 142l144 72-144 72-144-72z"/>
+  </g>
+  <g>
+    <path fill="#be123c" d="M256 208 400 136v44l-144 72z"/>
+    <path fill="#f43f5e" d="M112 136l144 72v44l-144-72z"/>
+    <path fill="#fda4af" d="M256 64l144 72-144 72-144-72z"/>
+  </g>
+</svg>

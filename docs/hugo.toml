@@ -14,10 +14,39 @@ locale = "en-US"
     [markup.goldmark.renderer]
       unsafe = true
 
+[menu]
+  [[menu.main]]
+    name = "Docs"
+    pageRef = "/docs"
+    weight = 1
+  [[menu.main]]
+    name = "Quickstart"
+    pageRef = "/docs/getting-started/quickstart"
+    weight = 2
+  [[menu.main]]
+    name = "CLI"
+    pageRef = "/docs/cli"
+    weight = 3
+  [[menu.main]]
+    name = "Search"
+    weight = 4
+    [menu.main.params]
+      type = "search"
+  [[menu.main]]
+    name = "GitHub"
+    url = "https://github.com/laiaqwq/sandwichcake"
+    weight = 5
+    [menu.main.params]
+      icon = "github"
+
 [params]
   [params.navbar]
     displayTitle = true
-    displayLogo = false
+    displayLogo = true
+    [params.navbar.logo]
+      path = "images/logo.svg"
+      width = 22
+      height = 29
 
   [params.footer]
     displayCopyright = true
